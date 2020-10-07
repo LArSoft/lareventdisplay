@@ -19,17 +19,18 @@ art_make_library(
     ${ART_FRAMEWORK_SERVICES_REGISTRY}
     ${ART_PERSISTENCY_PROVENANCE}
     ${MF_MESSAGELOGGER}
-    ${ROOT_CORE}
-    ${ROOT_EG}
-    ${ROOT_GPAD}
-    ${ROOT_GRAF3D}
-    ${ROOT_GRAF}
-    ${ROOT_GUI}
-    ${ROOT_HIST}
-    ${ROOT_PHYSICS}
-    ${ROOT_RIO}
+    ROOT::Core
+    ROOT::EG
+    ROOT::Gpad
+    ROOT::Graf3d
+    ROOT::Graf
+    ROOT::Gui
+    ROOT::Hist
+    ROOT::Physics
+    ROOT::RIO
     canvas
     cetlib_except
+    lardataalg_DetectorInfo
     larcorealg_Geometry
     lardata_ArtDataHelper
     lardata_Utilities
@@ -59,10 +60,10 @@ simple_plugin(SimulationDrawingOptions "service" nuevdb_EventDisplayBase)
 simple_plugin(ColorDrawingOptions "service"
               ${ART_PERSISTENCY_PROVENANCE}
               ${MF_MESSAGELOGGER}
-              ${ROOT_CORE}
-              ${ROOT_GRAF3D}
-              ${ROOT_HIST}
-              ${ROOT_MATHCORE}
+              ROOT::Core
+              ROOT::Graf3d
+              ROOT::Hist
+              ROOT::MathCore
               larcorealg_Geometry
               lardataobj_RecoBase
               nuevdb_EventDisplayBase)
@@ -73,7 +74,7 @@ simple_plugin(InfoTransfer "service"
               ${ART_FRAMEWORK_PRINCIPAL}
               ${ART_PERSISTENCY_PROVENANCE}
               ${MF_MESSAGELOGGER}
-              ${ROOT_CORE})
+              ROOT::Core)
 
 install_headers()
 install_fhicl()

@@ -1,26 +1,26 @@
 # The parent line must be the first non-comment line in the file
 # This line defines the product name and version
-parent	lareventdisplay	v08_09_02
-defaultqual	e17
+parent	lareventdisplay	v09_00_07
+defaultqual	e19
 #
 fcldir		product_dir	job
 #
 product         version
-larreco         v08_23_02
-nuevdb          v1_01_01
-cetbuildtools   v7_14_00	-	only_for_build
+larreco         v09_02_02
+nuevdb          v1_02_06
+cetbuildtools   v7_15_01	-	only_for_build
 end_product_list
 
-  
-qualifier	larreco	 	nuevdb
-e17:py3:debug	e17:py3:debug	e17:py3:debug
-e17:py3:prof	e17:py3:prof	e17:py3:prof
-c2:py3:debug	c2:py3:debug	c2:py3:debug
-c2:py3:prof	c2:py3:prof	c2:py3:prof
-e17:debug	e17:debug	e17:debug
-e17:prof	e17:prof	e17:prof
-c2:debug	c2:debug	c2:debug
-c2:prof		c2:prof		c2:prof
+
+qualifier	larreco         nuevdb
+e19:py2:debug	e19:py2:debug	e19:py2:debug
+e19:py2:prof	e19:py2:prof	e19:py2:prof
+e19:debug	e19:debug	e19:debug
+e19:prof	e19:prof	e19:prof
+c7:py2:debug	c7:py2:debug	c7:py2:debug
+c7:py2:prof	c7:py2:prof	c7:py2:prof
+c7:debug	c7:debug	c7:debug
+c7:prof		c7:prof		c7:prof
 end_qualifier_list
 
 # Preserve tabs and formatting in emacs and vi / vim:
