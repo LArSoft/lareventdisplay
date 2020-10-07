@@ -238,19 +238,25 @@ void SimulationDrawer::MCTruthVectors2D(const art::Event& evt,
       std::cout<<"  Photons > 50 MeV are drawn as dotted lines corrected for space charge and are not shifted.\n";
       std::cout<<"  Decay photon end points are drawn at 2 interaction lengths (44 cm) from the start position.\n";
       std::cout<<"  Color: Green = (50 < E_photon < 100 MeV), Blue = (100 MeV < E_photon < 200 MeV), Red = (E_photon > 300 MeV).\n";
+      
+      std::cout<<"Displaying Michels as well \n";
     }
 
     bool showTruth = (drawopt->fShowMCTruthVectors == 1 || drawopt->fShowMCTruthVectors == 3);
     bool showPhotons = (drawopt->fShowMCTruthVectors > 1);
-
-    if(showTruth) {
+    bool showMichels = (drawopt->fShowMCTruthVectors > 1);
+        
+    if(showTruth) 
+    {
       // Unpack and draw the MC vectors
       std::vector<const simb::MCTruth*> mctruth;
       this->GetMCTruth(evt, mctruth);
 
-      for (size_t i = 0; i < mctruth.size(); ++i) {
+      for (size_t i = 0; i < mctruth.size(); ++i) 
+      {
         if (mctruth[i]->Origin() == simb::kCosmicRay) continue;
-        for (int j = 0; j < mctruth[i]->NParticles(); ++j) {
+        for (int j = 0; j < mctruth[i]->NParticles(); ++j) 
+	{
           const simb::MCParticle& p = mctruth[i]->GetParticle(j);
 
           // Skip all but incoming and out-going particles
@@ -278,7 +284,8 @@ void SimulationDrawer::MCTruthVectors2D(const art::Event& evt,
           double time = detprop->ConvertXToTicks(xyz1[0] + xShift, (int)plane, rawopt->fTPC, rawopt->fCryostat);
           double time2 = detprop->ConvertXToTicks(xyz2[0] + xShift, (int)plane, rawopt->fTPC, rawopt->fCryostat);
 
-          if(rawopt->fAxisOrientation < 1){
+          if(rawopt->fAxisOrientation < 1)
+	  {
             TLine& l = view->AddLine(w1, time, w2, time2);
             evd::Style::FromPDG(l, p.PdgCode());
           }
@@ -292,6 +299,129 @@ void SimulationDrawer::MCTruthVectors2D(const art::Event& evt,
       } // loop on truths
     } // showTruth
 
+  // *MC truth G4 information
+  art::Handle< std::vector<simb::MCParticle> > mcparticleListHandle;
+  std::vector<art::Ptr<simb::MCParticle> > mcparticlelist;
+    if (evt.getByLabel("largeant",mcparticleListHandle))
+    {
+      art::fill_ptr_vector(mcparticlelist, mcparticleListHandle);
+    }
+    else
+    {
+      // If we requested this info but it doesn't exist, don't use it.
+      //fSaveCryInfo = false;
+      mf::LogError("AnalysisTree") << "Requested G4 information but none exists, hence not saving G4 information.";
+    }
+  
+
+    if(showPhotons) 
+    {
+
+      std::cout<<"inside photons"<<"\n";
+      //MCParticle information
+      for(size_t oo=0; oo<mcparticlelist.size(); oo++)
+      {
+        art::Ptr<simb::MCParticle> ppart_l(mcparticleListHandle, oo);
+        const simb::MCParticle& ppart = *ppart_l;
+//        std::cout<<" MCParticle_ID "<<ppart.TrackId()<<" MCParticle_pdg "<<ppart.PdgCode()<<"\n";
+/*
+      std::cout<<"inside loop"<<"\n";
+      // draw pizero photons with T > 30 MeV
+      art::ServiceHandle<cheat::ParticleInventoryService const> pi_serv;
+      std::cout<<"inside loop1"<<"\n";
+      sim::ParticleList const& plist = pi_serv->ParticleList();
+      std::cout<<"inside showPhotons\n";
+      if(plist.empty()) return;
+*/      // photon interaction length approximate
+      double r = 100; //1m interaction length
+/*      for(sim::ParticleList::const_iterator ipart = plist.begin(); ipart != plist.end(); ++ipart) 
+      {
+        simb::MCParticle* p = (*ipart).second;
+        int trackID = p->TrackId();
+        art::Ptr<simb::MCTruth> theTruth = pi_serv->TrackIdToMCTruth_P(trackID);
+        if(theTruth->Origin() == simb::kCosmicRay) continue;
+*/        if(ppart.PdgCode() != 22) continue;
+//        if(p->Process() != "Decay") continue;
+        int TMeV = 1000 * (ppart.E() - ppart.Mass());
+//        if(TMeV < 30) continue;
+        auto gptStart = geo::Point_t(ppart.Vx(),ppart.Vy(),ppart.Vz());
+        geo::Point_t sceOffset {0, 0, 0};
+        if(sce->EnableCorrSCE()) sceOffset = sce->GetPosOffsets(gptStart);
+//        std::cout<<"Pos "<<std::fixed<<std::setprecision(1)<<gptStart.X()<<" "<<gptStart.Y()<<" "<<gptStart.Z();
+//        std::cout<<" sceOffset "<<std::setprecision(1)<<sceOffset.X()<<" "<<sceOffset.Y()<<" "<<sceOffset.Z()<<"\n";
+        xyz1[0]  = ppart.Vx() - sceOffset.X();
+        xyz1[1]  = ppart.Vy() + sceOffset.Y();
+        xyz1[2]  = ppart.Vz() + sceOffset.Z();
+        xyz2[0] = xyz1[0] + r * ppart.Px()/ppart.P();
+        xyz2[1] = xyz1[1] + r * ppart.Py()/ppart.P();
+        xyz2[2] = xyz1[2] + r * ppart.Pz()/ppart.P();
+        double w1 = geo->WireCoordinate(xyz1[1], xyz1[2], (int)plane, rawopt->fTPC, rawopt->fCryostat);
+        double t1 = detprop->ConvertXToTicks(xyz1[0], (int)plane, rawopt->fTPC, rawopt->fCryostat);
+        double w2 = geo->WireCoordinate(xyz2[1], xyz2[2], (int)plane, rawopt->fTPC, rawopt->fCryostat);
+        double t2 = detprop->ConvertXToTicks(xyz2[0], (int)plane, rawopt->fTPC, rawopt->fCryostat);
+        TLine& l = view->AddLine(w1, t1, w2, t2);
+        l.SetLineWidth(2);
+        l.SetLineStyle(kDotted);
+        if(TMeV < 100) {
+          l.SetLineColor(kGreen);
+        } else if(TMeV < 200) {
+          l.SetLineColor(kBlue);
+        } else {
+          l.SetLineColor(kRed);
+        }
+      } // ipart
+    } // showPhotons
+
+    if(showMichels) 
+    {
+      std::cout<<"inside Michels"<<"\n";
+      //MCParticle information
+      for(size_t oo=0; oo<mcparticlelist.size(); oo++)
+      {
+        art::Ptr<simb::MCParticle> ppart_l(mcparticleListHandle, oo);
+        const simb::MCParticle& ppart = *ppart_l;
+//        std::cout<<" MCParticle_ID "<<ppart.TrackId()<<" MCParticle_pdg "<<ppart.PdgCode()<<"\n";
+
+/*      // draw Michels 
+      art::ServiceHandle<cheat::ParticleInventoryService const> pi_serv;
+      sim::ParticleList const& plist = pi_serv->ParticleList();
+      if(plist.empty()) return;
+      std::cout<<"inside showPhotons\n";
+      // photon interaction length approximate
+*/      double r = 100; //1m interaction length
+/*      for(sim::ParticleList::const_iterator ipart = plist.begin(); ipart != plist.end(); ++ipart) 
+      {
+        simb::MCParticle* p = (*ipart).second;
+        int trackID = p->TrackId();
+        art::Ptr<simb::MCTruth> theTruth = pi_serv->TrackIdToMCTruth_P(trackID);
+        if(theTruth->Origin() == simb::kCosmicRay) continue;
+*/        if(std::abs(ppart.PdgCode()) != 11) continue;
+        if(ppart.Process() != "Decay") continue;
+//        int TMeV = 1000 * (p->E() - p->Mass());
+//        if(TMeV < 30) continue;
+        auto gptStart = geo::Point_t(ppart.Vx(),ppart.Vy(),ppart.Vz());
+        geo::Point_t sceOffset {0, 0, 0};
+        if(sce->EnableCorrSCE()) sceOffset = sce->GetPosOffsets(gptStart);
+//        std::cout<<"Pos "<<std::fixed<<std::setprecision(1)<<gptStart.X()<<" "<<gptStart.Y()<<" "<<gptStart.Z();
+//        std::cout<<" sceOffset "<<std::setprecision(1)<<sceOffset.X()<<" "<<sceOffset.Y()<<" "<<sceOffset.Z()<<"\n";
+        xyz1[0]  = ppart.Vx() - sceOffset.X();
+        xyz1[1]  = ppart.Vy() + sceOffset.Y();
+        xyz1[2]  = ppart.Vz() + sceOffset.Z();
+        xyz2[0] = xyz1[0] + r * ppart.Px()/ppart.P();
+        xyz2[1] = xyz1[1] + r * ppart.Py()/ppart.P();
+        xyz2[2] = xyz1[2] + r * ppart.Pz()/ppart.P();
+        double w1 = geo->WireCoordinate(xyz1[1], xyz1[2], (int)plane, rawopt->fTPC, rawopt->fCryostat);
+        double t1 = detprop->ConvertXToTicks(xyz1[0], (int)plane, rawopt->fTPC, rawopt->fCryostat);
+        double w2 = geo->WireCoordinate(xyz2[1], xyz2[2], (int)plane, rawopt->fTPC, rawopt->fCryostat);
+        double t2 = detprop->ConvertXToTicks(xyz2[0], (int)plane, rawopt->fTPC, rawopt->fCryostat);
+        TLine& l = view->AddLine(w1, t1, w2, t2);
+        l.SetLineWidth(2);
+        l.SetLineStyle(kSolid);
+        l.SetLineColor(kRed);
+      } // ipart
+    } // showMichels
+
+/*
     if(showPhotons) {
       // draw pizero photons with T > 30 MeV
       art::ServiceHandle<cheat::ParticleInventoryService const> pi_serv;
@@ -335,7 +465,7 @@ void SimulationDrawer::MCTruthVectors2D(const art::Event& evt,
         }
       } // ipart
     } // showPhotons
-
+*/
     first = false;
 
   } // MCTruthVectors2D
