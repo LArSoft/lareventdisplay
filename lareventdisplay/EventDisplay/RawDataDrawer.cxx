@@ -66,7 +66,8 @@
 #include "TH1F.h"
 #include "TVirtualPad.h"
 
-#include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
+#include "larcorealg/Geometry/PlaneGeo.h"
 #include "lardata/DetectorInfoServices/DetectorPropertiesService.h"
 #include "lardataalg/Utilities/StatCollector.h" // lar::util::MinMaxCollector<>
 #include "lardataobj/RawData/RawDigit.h"
@@ -500,7 +501,7 @@ namespace evd {
     public:
       ADCCorrectorClass(detinfo::DetectorPropertiesData const& dp, geo::PlaneID const& pid)
         : detProp{dp}
-        , wirePitch{art::ServiceHandle<geo::Geometry const>()->WirePitch(pid)}
+        , wirePitch{art::ServiceHandle<geo::WireReadout const>()->Get().Plane(pid).WirePitch()}
         , electronsToADC{dp.ElectronsToADC()}
       {}
 
@@ -535,8 +536,6 @@ namespace evd {
     , fCacheID(new details::CacheID_t)
     , fDrawingRange(new details::CellGridClass)
   {
-    art::ServiceHandle<geo::Geometry const> geo;
-
     art::ServiceHandle<evd::RawDrawingOptions const> rawopt;
     geo::TPCID tpcid(rawopt->fCryostat, rawopt->fTPC);
 
@@ -544,7 +543,8 @@ namespace evd {
     fTicks = rawopt->fTicks;
 
     // set the list of bad channels in this detector
-    unsigned int nplanes = geo->Nplanes(tpcid);
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
+    unsigned int nplanes = wireReadoutGeom.Nplanes(tpcid);
     fWireMin.resize(nplanes, -1);
     fWireMax.resize(nplanes, -1);
     fTimeMin.resize(nplanes, -1);
@@ -777,7 +777,7 @@ namespace evd {
     const lariov::DetPedestalProvider& pedestalRetrievalAlg =
       *(lar::providerFrom<lariov::DetPedestalService>());
 
-    geo::GeometryCore const& geom = *(lar::providerFrom<geo::Geometry>());
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
 
     // loop over all the channels/raw digits
     for (evd::details::RawDigitInfo_t const& digit_info : *digit_cache) {
@@ -794,7 +794,7 @@ namespace evd {
       // and before we start querying databases, unpacking data etc.
       // we want to know it's for something
 
-      std::vector<geo::WireID> WireIDs = geom.ChannelToWire(channel);
+      std::vector<geo::WireID> WireIDs = wireReadoutGeom.ChannelToWire(channel);
 
       bool bDrawChannel = false;
       for (geo::WireID const& wireID : WireIDs) {
@@ -961,8 +961,9 @@ namespace evd {
 
     art::ServiceHandle<evd::ColorDrawingOptions const> cst;
 
-    geo::GeometryCore const& geom = *art::ServiceHandle<geo::Geometry const>();
-    geo::SigType_t const sigType = geom.SignalType(pid);
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
+
+    geo::SigType_t const sigType = wireReadoutGeom.SignalType(pid);
     evdb::ColorScale const& ColorSet = cst->RawQ(sigType);
     size_t const nBoxes = BoxInfo.size();
     unsigned int nDrawnBoxes = 0;
@@ -985,11 +986,6 @@ namespace evd {
       // coordinates of the cell box
       float min_wire, max_wire, min_tick, max_tick;
       std::tie(min_wire, min_tick, max_wire, max_tick) = fDrawingRange->GetCellBox(iBox);
-      /*
-             MF_LOG_TRACE("RawDataDrawer")
-             << "Wires ( " << min_wire << " - " << max_wire << " ) ticks ("
-             << min_tick << " - " << max_tick << " ) for cell " << iBox;
-             */
       if (sf != 1.) {              // need to shrink the box
         float const nsf = 1. - sf; // negation of scale factor
         float const half_box_wires = (max_wire - min_wire) / 2.,
@@ -1067,11 +1063,11 @@ namespace evd {
       int& TimeMax = pRawDataDrawer->fTimeMax[plane];
 
       if ((WireMin == WireMax) && WireRange.has_data()) {
-        geo::GeometryCore const& geom = *art::ServiceHandle<geo::Geometry const>();
+        auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout>()->Get();
         mf::LogInfo("RawDataDrawer")
           << "Region of interest for " << std::string(PlaneID()) << " detected to be within wires "
           << WireRange.min() << " to " << WireRange.max() << " (plane has "
-          << geom.Nwires(PlaneID()) << " wires)";
+          << wireReadoutGeom.Nwires(PlaneID()) << " wires)";
         WireMax = WireRange.max() + 1;
         WireMin = WireRange.min();
       }
@@ -1123,16 +1119,17 @@ namespace evd {
     geo::PlaneID const pid(rawopt->CurrentTPC(), plane);
 
     bool const bDraw = (rawopt->fDrawRawDataOrCalibWires != 1);
+
     // if we don't need to draw, don't bother doing anything;
     // if the region of interest is required, RunRoIextractor() should be called
     // (ok, now it's private, but it could be exposed)
     if (!bDraw) return;
 
-    art::ServiceHandle<geo::Geometry const> geom;
-
     // Need to loop over the labels, but we don't want to zap existing cached RawDigits that are valid
     // So... do the painful search to make sure the RawDigits we recover at those we are searching for.
     bool theDroidIAmLookingFor = false;
+
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
 
     // Loop over labels
     for (const auto& rawDataLabel : rawopt->fRawDataLabels) {
@@ -1144,7 +1141,7 @@ namespace evd {
 
       // Painful check to see if these RawDigits contain the droids we are looking for
       for (const auto& rawDigit : digit_cache->Digits()) {
-        std::vector<geo::WireID> WireIDs = geom->ChannelToWire(rawDigit.Channel());
+        std::vector<geo::WireID> WireIDs = wireReadoutGeom.ChannelToWire(rawDigit.Channel());
 
         for (geo::WireID const& wireID : WireIDs) {
           if (wireID.planeID() != pid) continue; // not us!
@@ -1227,8 +1224,6 @@ namespace evd {
   //........................................................................
   int RawDataDrawer::GetRegionOfInterest(int plane, int& minw, int& maxw, int& mint, int& maxt)
   {
-    art::ServiceHandle<geo::Geometry const> geo;
-
     if ((unsigned int)plane >= fWireMin.size()) {
       mf::LogWarning("RawDataDrawer")
         << " Requested plane " << plane << " is larger than those available " << std::endl;
@@ -1246,8 +1241,10 @@ namespace evd {
     minw = (minw - 30 < 0) ? 0 : minw - 30;
     mint = (mint - 10 < 0) ? 0 : mint - 10;
 
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout>()->Get();
     geo::PlaneID const planeid(0, 0, plane);
-    maxw = (maxw + 10 > (int)geo->Nwires(planeid)) ? geo->Nwires(planeid) : maxw + 10;
+    maxw = (maxw + 10 > (int)wireReadoutGeom.Nwires(planeid)) ? wireReadoutGeom.Nwires(planeid) :
+                                                                maxw + 10;
     maxt = (maxt + 10 > TotalClockTicks()) ? TotalClockTicks() : maxt + 10;
 
     return 0;
@@ -1268,7 +1265,7 @@ namespace evd {
     art::ServiceHandle<evd::RawDrawingOptions const> rawopt;
     if (rawopt->fDrawRawDataOrCalibWires == 1) return;
 
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
 
     geo::PlaneID const pid(rawopt->CurrentTPC(), plane);
 
@@ -1295,7 +1292,7 @@ namespace evd {
         // to be explicit: we don't cound bad channels in
         if (!rawopt->fSeeBadChannels && channelStatus.IsBad(channel)) continue;
 
-        std::vector<geo::WireID> wireids = geo->ChannelToWire(channel);
+        std::vector<geo::WireID> wireids = wireReadoutGeom.ChannelToWire(channel);
         for (auto const& wid : wireids) {
           // check that the plane and tpc are the correct ones to draw
           if (wid.planeID() != pid) continue;
@@ -1319,7 +1316,7 @@ namespace evd {
           }
 
           for (short d : uncompressed)
-            histo->Fill(float(d) - pedestal); //pedestals[plane]); //hit.GetPedestal());
+            histo->Fill(float(d) - pedestal);
 
           // this channel is on the correct plane, don't double count the raw signal
           // if there are more than one wids for the channel
@@ -1335,13 +1332,14 @@ namespace evd {
                                   unsigned int wire,
                                   TH1F* histo)
   {
-
     // Check if we're supposed to draw raw hits at all
     art::ServiceHandle<evd::RawDrawingOptions const> rawopt;
     if (rawopt->fDrawRawDataOrCalibWires == 1) return;
 
     // make sure we have the raw digits cached
     geo::PlaneID const pid(rawopt->CurrentTPC(), plane);
+
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
 
     // loop over labels
     for (const auto& rawDataLabel : rawopt->fRawDataLabels) {
@@ -1353,8 +1351,7 @@ namespace evd {
       geo::WireID const wireid(pid, wire);
 
       // find the channel
-      art::ServiceHandle<geo::Geometry const> geom;
-      raw::ChannelID_t const channel = geom->PlaneWireToChannel(wireid);
+      raw::ChannelID_t const channel = wireReadoutGeom.PlaneWireToChannel(wireid);
       if (!raw::isValidChannelID(channel)) { // no channel, empty histogram
         mf::LogError("RawDataDrawer")
           << __func__ << ": no channel associated to " << std::string(wireid);
@@ -1383,9 +1380,6 @@ namespace evd {
 
       if (
         !pDigit) { // this is weird... actually no, this can happen if the RawDigits are per TPC (or something)
-                   //                mf::LogWarning("RawDataDrawer") << __func__
-                   //                << ": can't find raw digit for channel #" << channel
-                   //                << " (" << std::string(wireid) << ")";
         continue;
       }
 
@@ -1407,100 +1401,10 @@ namespace evd {
       }
 
       for (size_t j = 0; j < uncompressed.size(); ++j)
-        histo->Fill(float(j),
-                    float(uncompressed[j]) - pedestal); //pedestals[plane]); //hit.GetPedestal());
+        histo->Fill(float(j), float(uncompressed[j]) - pedestal);
     }
 
   } // RawDataDrawer::FillTQHisto()
-
-  //......................................................................
-
-  //   void RawDataDrawer::RawDigit3D(const art::Event& evt,
-  //                             evdb::View3D*     view)
-  //   {
-  //     // Check if we're supposed to draw raw hits at all
-  //     art::ServiceHandle<evd::RawDrawingOptions const> rawopt;
-  //     if (rawopt->fDrawRawOrCalibHits!=0) return;
-
-  //     art::ServiceHandle<geo::Geometry const> geom;
-
-  //     HitTower tower;
-  //     tower.fQscale = 0.01;
-
-  //     for (unsigned int imod=0; imod<rawopt->fRawDigitModules.size(); ++imod) {
-  //       const char* which = rawopt->fRawDigitModules[imod].c_str();
-
-  //       std::vector<raw::RawDigit> rawhits;
-  //       GetRawDigits(evt, which, rawhits);
-
-  //       for (unsigned int i=0; i<rawhits.size(); ++i) {
-  //    double t = 0;
-  //    double q = 0;
-  //    t = rawhits[i]->fTDC[0];
-  //    for (unsigned int j=0; j<rawhits[i]->NADC(); ++j) {
-  //      q += rawhits[i]->ADC(j);
-  //    }
-  //    // Hack for now...
-  //    if (q<=0.0) q = 1+i%10;
-
-  //    // Get the cell geometry for the hit
-  //    int         iplane = cmap->GetPlane(rawhits[i].get());
-  //    int         icell  = cmap->GetCell(rawhits[i].get());
-  //    double      xyz[3];
-  //    double      dpos[3];
-  //    geo::View_t v;
-  //    geom->CellInfo(iplane, icell, &v, xyz, dpos);
-
-  //    switch (rawopt->fRawDigit3DStyle) {
-  //    case 1:
-  //      //
-  //      // Render digits as towers
-  //      //
-  //      if (v==geo::kX) {
-  //        tower.AddHit(v, iplane, icell, xyz[0], xyz[2], q,  t);
-  //      }
-  //      else if (v==geo::kY) {
-  //        tower.AddHit(v, iplane, icell, xyz[1], xyz[2], q, t);
-  //      }
-  //      else abort();
-  //      break;
-  //    default:
-  //      //
-  //      // Render Digits as boxes
-  //      //
-  //      TPolyLine3D& p = view->AddPolyLine3D(5,kGreen+1,1,2);
-  //      double sf = std::sqrt(0.01*q);
-  //      if (v==geo::kX) {
-  //        double x1 = xyz[0] - sf*dpos[0];
-  //        double x2 = xyz[0] + sf*dpos[0];
-  //        double z1 = xyz[2] - sf*dpos[2];
-  //        double z2 = xyz[2] + sf*dpos[2];
-  //        p.SetPoint(0, x1, geom->DetHalfHeight(), z1);
-  //        p.SetPoint(1, x2, geom->DetHalfHeight(), z1);
-  //        p.SetPoint(2, x2, geom->DetHalfHeight(), z2);
-  //        p.SetPoint(3, x1, geom->DetHalfHeight(), z2);
-  //        p.SetPoint(4, x1, geom->DetHalfHeight(), z1);
-  //      }
-  //      else if (v==geo::kY) {
-  //        double y1 = xyz[1] - sf*dpos[1];
-  //        double y2 = xyz[1] + sf*dpos[1];
-  //        double z1 = xyz[2] - sf*dpos[2];
-  //        double z2 = xyz[2] + sf*dpos[2];
-  //        p.SetPoint(0, geom->DetHalfWidth(), y1, z1);
-  //        p.SetPoint(1, geom->DetHalfWidth(), y2, z1);
-  //        p.SetPoint(2, geom->DetHalfWidth(), y2, z2);
-  //        p.SetPoint(3, geom->DetHalfWidth(), y1, z2);
-  //        p.SetPoint(4, geom->DetHalfWidth(), y1, z1);
-  //      }
-  //      else abort();
-  //      break;
-  //    } // switch fRawDigit3DStyle
-  //       }//end loop over raw digits
-  //     }// end loop over RawDigit modules
-
-  //     // Render the towers for that style choice
-  //     if (rawopt->fRawDigit3DStyle==1) tower.Draw(view);
-  //   }
 
   //......................................................................
   bool RawDataDrawer::hasRegionOfInterest(geo::PlaneID::PlaneID_t plane) const
@@ -1618,16 +1522,12 @@ namespace evd {
     {
       raw::RawDigit::ADCvector_t const& samples = Data();
 
-      //  lar::util::StatCollector<double> stat;
-      //  stat.add(samples.begin(), samples.end());
-
       lar::util::MinMaxCollector<raw::RawDigit::ADCvector_t::value_type> stat(samples.begin(),
                                                                               samples.end());
 
       sample_info.reset(new SampleInfo_t);
       sample_info->min_charge = stat.min();
       sample_info->max_charge = stat.max();
-      //  sample_info->average_charge = stat.Average();
 
     } // RawDigitInfo_t::CollectSampleInfo()
 

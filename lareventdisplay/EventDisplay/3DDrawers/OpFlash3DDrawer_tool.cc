@@ -3,7 +3,8 @@
 /// \author T. Usher
 ////////////////////////////////////////////////////////////////////////
 
-#include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
+#include "larcorealg/Geometry/OpDetGeo.h"
 #include "lardata/DetectorInfoServices/DetectorClocksService.h"
 #include "lardata/DetectorInfoServices/DetectorPropertiesService.h"
 #include "lardataalg/DetectorInfo/DetectorProperties.h"
@@ -30,7 +31,7 @@ namespace evdb_tool {
 
   class OpFlash3DDrawer : public I3DDrawer {
   public:
-    explicit OpFlash3DDrawer(const fhicl::ParameterSet&);
+    explicit OpFlash3DDrawer(const fhicl::ParameterSet&) {}
 
     void Draw(const art::Event&, evdb::View3D*) const override;
 
@@ -43,10 +44,6 @@ namespace evdb_tool {
                             int) const;
   };
 
-  //----------------------------------------------------------------------
-  // Constructor.
-  OpFlash3DDrawer::OpFlash3DDrawer(const fhicl::ParameterSet& pset) {}
-
   void OpFlash3DDrawer::Draw(const art::Event& event, evdb::View3D* view) const
   {
     art::ServiceHandle<evd::RecoDrawingOptions> recoOpt;
@@ -54,7 +51,6 @@ namespace evdb_tool {
     if (recoOpt->fDrawOpFlashes == 0) return;
 
     // Service recovery
-    art::ServiceHandle<geo::Geometry> geo;
     auto const clock_data =
       art::ServiceHandle<detinfo::DetectorClocksService const>()->DataFor(event);
     auto const det_prop =
@@ -125,6 +121,7 @@ namespace evdb_tool {
                          (maxTotalPE - minTotalPE));
 
       // We are meant to draw the flashes/hits, so loop over the list of input flashes
+      auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
       for (size_t idx = 0; idx < recoOpt->fOpFlashLabels.size(); idx++) {
         art::InputTag opFlashProducer = recoOpt->fOpFlashLabels[idx];
 
@@ -168,7 +165,7 @@ namespace evdb_tool {
           // Loop through the OpHits here
           for (const auto& opHit : opHitVec) {
             unsigned int opChannel = opHit->OpChannel();
-            const geo::OpDetGeo& opHitGeo = geo->OpDetGeoFromOpChannel(opChannel);
+            const geo::OpDetGeo& opHitGeo = wireReadoutGeom.OpDetGeoFromOpChannel(opChannel);
             const geo::Point_t& opHitPos = opHitGeo.GetCenter();
             float zWidth = opHitGeo.HalfW();
             float yWidth = opHitGeo.HalfH();
@@ -193,7 +190,6 @@ namespace evdb_tool {
                     << ", flashXpos: " << flashXpos << ", wid: " << flashXWid
                     << ", opHitPEScale: " << opHitPEScale << std::endl;
 
-          //            std::vector<Eigen::Vector3f>
           Eigen::Vector3f coordsLo(flashXpos - flashXWid,
                                    opFlashPtr->YCenter() - opFlashPtr->YWidth(),
                                    opFlashPtr->ZCenter() - opFlashPtr->ZWidth());
@@ -205,8 +201,6 @@ namespace evdb_tool {
         }
       }
     }
-
-    return;
   }
 
   void OpFlash3DDrawer::DrawRectangularBox(evdb::View3D* view,
@@ -243,8 +237,6 @@ namespace evdb_tool {
     bottom.SetPoint(2, coordsHi[0], coordsLo[1], coordsHi[2]);
     bottom.SetPoint(3, coordsLo[0], coordsLo[1], coordsHi[2]);
     bottom.SetPoint(4, coordsLo[0], coordsLo[1], coordsLo[2]);
-
-    return;
   }
 
   DEFINE_ART_CLASS_TOOL(OpFlash3DDrawer)

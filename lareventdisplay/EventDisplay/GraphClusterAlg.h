@@ -11,14 +11,9 @@
 
 #include <vector>
 
-namespace art {
-  class Event;
-}
+#include "art/Framework/Principal/fwd.h"
 #include "canvas/Persistency/Common/PtrVector.h"
-
-namespace fhicl {
-  class ParameterSet;
-}
+#include "fhiclcpp/fwd.h"
 
 namespace util {
   class PxLine;
@@ -31,14 +26,9 @@ namespace recob {
 namespace evd {
 
   class GraphClusterAlg {
-
   public:
-    GraphClusterAlg(fhicl::ParameterSet const& pset);
+    GraphClusterAlg(fhicl::ParameterSet const&);
 
-    void reconfigure(fhicl::ParameterSet const& pset);
-
-    //   void GetStartEndHits(unsigned int plane, recob::Hit * starthit,recob::Hit * endhit);
-    //   void GetStartEndHits(unsigned int plane);
     void GetStartEndHits(unsigned int plane, util::PxLine& startendpoints);
 
     //void GetHitList(unsigned int plane,std::vector< art::Ptr <recob::Hit> > ptrhitlist);
@@ -59,21 +49,6 @@ namespace evd {
     int fRun;
     int fSubRun;
     int fEvent;
-
-    /*
-    std::vector< recob::Hit * > starthit;
-    std::vector< recob::Hit * > endhit;
-    */
-    //     std::vector < std::vector< recob::Hit * > > hitlist;
-
-    //     std::vector < util::PxLine > plines;
-    //
-    //     std::vector <unsigned int> swire;
-    //     std::vector <unsigned int> ewire;
-    //     std::vector <double> stime;
-    //     std::vector <double> etime;
-    //
-
   }; //class GraphClusterAlg
 
 } //namespace evd

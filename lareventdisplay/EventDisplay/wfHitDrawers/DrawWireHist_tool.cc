@@ -3,7 +3,7 @@
 /// \author T. Usher
 ////////////////////////////////////////////////////////////////////////
 
-#include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
 #include "lardataobj/RecoBase/Wire.h"
 #include "lareventdisplay/EventDisplay/ColorDrawingOptions.h"
 #include "lareventdisplay/EventDisplay/RawDrawingOptions.h"
@@ -24,8 +24,6 @@ namespace evdb_tool {
   class DrawWireHist : public IWaveformDrawer {
   public:
     explicit DrawWireHist(const fhicl::ParameterSet& pset);
-
-    ~DrawWireHist();
 
     void configure(const fhicl::ParameterSet& pset) override;
     void Fill(evdb::View2D&, raw::ChannelID_t&, float, float) override;
@@ -48,8 +46,6 @@ namespace evdb_tool {
   // Constructor.
   DrawWireHist::DrawWireHist(const fhicl::ParameterSet& pset) { configure(pset); }
 
-  DrawWireHist::~DrawWireHist() {}
-
   void DrawWireHist::configure(const fhicl::ParameterSet& pset)
   {
     fColorMap.push_back(kBlue);
@@ -58,8 +54,6 @@ namespace evdb_tool {
     fColorMap.push_back(kRed);
 
     fRecoHistMap.clear();
-
-    return;
   }
 
   void DrawWireHist::Fill(evdb::View2D& view2D,
@@ -114,8 +108,6 @@ namespace evdb_tool {
         break;
       }
     } //end loop over HitFinding modules
-
-    return;
   }
 
   void DrawWireHist::Draw(const std::string& options, float maxLowVal, float maxHiVal)
@@ -129,8 +121,6 @@ namespace evdb_tool {
 
       histPtr->Draw(options.c_str());
     }
-
-    return;
   }
 
   //......................................................................
@@ -139,7 +129,7 @@ namespace evdb_tool {
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
     art::ServiceHandle<evd::ColorDrawingOptions const> cst;
     art::ServiceHandle<evd::RawDrawingOptions const> drawopt;
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
 
     // Get rid of the previous histograms
     fRecoHistMap.clear();
@@ -148,7 +138,7 @@ namespace evdb_tool {
     for (auto& tag : recoOpt->fWireLabels) {
       // figure out the signal type for this plane, assume that
       // plane n in each TPC/cryostat has the same type
-      geo::SigType_t sigType = geo->SignalType(channel);
+      geo::SigType_t sigType = wireReadoutGeom.SignalType(channel);
       std::string tagString(tag.encode());
       int numBins = numTicks;
 

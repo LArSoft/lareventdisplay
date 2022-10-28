@@ -9,7 +9,7 @@
 ////////////////////////////////////////////////////////////////////////
 
 #include "lareventdisplay/EventDisplay/GraphClusterAlg.h"
-#include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
 #include "lardata/Utilities/PxUtils.h"
 #include "lareventdisplay/EventDisplay/InfoTransfer.h"
 
@@ -20,29 +20,12 @@
 #include "messagefacility/MessageLogger/MessageLogger.h"
 
 //-------------------------------------------------
-evd::GraphClusterAlg::GraphClusterAlg(fhicl::ParameterSet const& pset)
+evd::GraphClusterAlg::GraphClusterAlg(fhicl::ParameterSet const&)
 {
-  this->reconfigure(pset);
-  art::ServiceHandle<geo::Geometry const> geo;
-
-  fNPlanes = geo->Nplanes();
-  //     starthit.resize(fNPlanes);
-  //     endhit.resize(fNPlanes);
-
-  /*
-    swire.resize(fNPlanes);
-    ewire.resize(fNPlanes);
-    stime.resize(fNPlanes);
-    etime.resize(fNPlanes);*/
+  fNPlanes = art::ServiceHandle<geo::WireReadout>()->Get().Nplanes();
 }
 
 //-------------------------------------------------
-void evd::GraphClusterAlg::reconfigure(fhicl::ParameterSet const& /*pset*/)
-{
-
-  return;
-}
-
 void evd::GraphClusterAlg::GetHitListAndEndPoints(unsigned int plane,
                                                   art::PtrVector<recob::Hit>& ptrhitlist,
                                                   util::PxLine& startendpoints)
@@ -66,105 +49,12 @@ void evd::GraphClusterAlg::GetStartEndHits(unsigned int plane, util::PxLine& sta
   startendpoints.plane = plane;
 }
 
-//   //----------------------------------------------------------------------------
-//   void evd::GraphClusterAlg::GetStartEndHits(unsigned int plane)
-//   {
-//     std::vector < double > starthit;
-//     std::vector < double > endhit;
-//     art::ServiceHandle<evd::InfoTransfer const> intr;
-//     starthit=intr->GetStartHitCoords(plane);
-//     endhit=intr->GetEndHitCoords(plane);
-//
-//
-//     swire[plane]=starthit[0];
-//     stime[plane]=starthit[1];
-//     ewire[plane]=endhit[0];
-//     etime[plane]=endhit[1];
-//
-//   }
-
-//   //----------------------------------------------------------------------------
-//   void evd::GraphClusterAlg::GetStartEndHits(unsigned int plane,
-// 				     recob::Hit *starthit,
-// 				     recob::Hit *endhit)
-//   {
-//
-//     art::ServiceHandle<evd::InfoTransfer const> intr;
-//     art::ServiceHandle<geo::Geometry const>  geo;
-//
-//     starthit=intr->GetStartHit(plane);
-//     endhit=intr->GetEndHit(plane);
-//
-//     // error checking for bogus transfers
-//     if(starthit!=NULL){
-//       stime[plane] = starthit->PeakTime() ;
-//       try{
-// 	if(starthit->Wire() != NULL){
-// 	  swire[plane] = starthit->WireID().Wire;
-// 	}
-// 	else{
-// 	  swire[plane]=0;
-// 	}
-//       }
-//       catch(cet::exception e) {
-// 	mf::LogWarning("GraphClusterAlg") << "caught exception \n"
-// 				       << e;
-// 	swire[plane]=0;
-//       }
-//     }
-//     else{
-//       stime[plane]=0.;
-//     }
-//
-//     if(endhit!=NULL){
-//       etime[plane] = endhit->PeakTime();
-//       if(endhit->Wire()!=NULL){
-// 	ewire[plane] = endhit->WireID().Wire;
-//       }
-//       else{
-// 	ewire[plane]=0;
-//       }
-//     }
-//     else{
-//       etime[plane]=0.;
-//     }
-//
-//   }
-
-//----------------------------------------------------------------------------
-//  void evd::GraphClusterAlg::GetHitList(unsigned int plane,std::vector< art::Ptr <recob::Hit> > ptrhitlist)
-//  {
-//   art::ServiceHandle<evd::InfoTransfer const> intr;
-//
-//
-//   ptrhitlist=intr->GetHitList(plane);
-//   //std::vector <recob::Hit *> hitlist_out;
-//
-//   if(ptrhitlist.size()==0) {
-// 	WriteMsg("hit list of zero size, please select some hits");
-// 		return;
-// 	}
-//
-//    for(art::PtrVector<recob::Hit>::const_iterator hitIter = ptrhitlist.begin(); hitIter != ptrhitlist.end();  hitIter++){
-// // 	art::Ptr<recob::Hit> theHit = (*hitIter);
-// // 	unsigned int plane,cstat,tpc,wire;
-// //	hitlist_out.push_back((*hitIter)->Get());
-//  	}
-//
-//
-//
-//
-//    return;// hitlist_out;
-//  }
-
 //----------------------------------------------------------------------------
 void evd::GraphClusterAlg::GetHitList(unsigned int plane, art::PtrVector<recob::Hit>& ptrhitlist)
 {
   art::ServiceHandle<evd::InfoTransfer const> intr;
 
   std::vector<art::Ptr<recob::Hit>> ptlist = intr->GetHitList(plane);
-
-  //std::vector <recob::Hit *> hitlist_out;
 
   if (ptlist.size() == 0) {
     mf::LogVerbatim("GraphClusterAlg") << ("hit list of zero size, please select some hits");
@@ -173,12 +63,10 @@ void evd::GraphClusterAlg::GetHitList(unsigned int plane, art::PtrVector<recob::
 
   for (art::PtrVector<recob::Hit>::const_iterator hitIter = ptlist.begin(); hitIter != ptlist.end();
        hitIter++) {
-    // 	art::Ptr<recob::Hit> theHit = (*hitIter);
-    // 	unsigned int plane,cstat,tpc,wire;
     ptrhitlist.push_back((*hitIter));
   }
 
-  return; // hitlist_out;
+  return;
 }
 
 //----------------------------------------------------------------------------

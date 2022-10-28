@@ -66,7 +66,6 @@ namespace evd {
     RecoBaseDrawer();
     ~RecoBaseDrawer();
 
-  public:
     void Wire2D(const art::Event& evt, evdb::View2D* view, unsigned int plane);
     int Hit2D(const art::Event& evt,
               detinfo::DetectorPropertiesData const& detProp,
