@@ -7,6 +7,7 @@ cet_build_plugin(ICARUSDrawer art::tool
   larevt::ChannelStatusService
   larcore::Geometry_Geometry_service
   nuevdb::EventDisplayBase
+  art::Framework_Principal 
   art::Framework_Services_Registry
   ROOT::Graf3d
 )
@@ -19,6 +20,7 @@ cet_build_plugin(MicroBooNEDrawer art::tool
   larcore::Geometry_Geometry_service
   nuevdb::EventDisplayBase
   art::Framework_Services_Registry
+  art::Framework_Principal 
   ROOT::Graf3d
 )
 
