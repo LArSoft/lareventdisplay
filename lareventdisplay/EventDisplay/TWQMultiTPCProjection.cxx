@@ -19,6 +19,7 @@
 #include "TVirtualX.h"
 
 #include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
 #include "larcorealg/Geometry/PlaneGeo.h"
 #include "lardata/DetectorInfoServices/DetectorClocksService.h"
 #include "lardata/DetectorInfoServices/DetectorPropertiesService.h"
@@ -52,8 +53,8 @@ namespace evd {
   //......................................................................
   TWQMultiTPCProjectionView::TWQMultiTPCProjectionView(TGMainFrame* mf) : evdb::Canvas(mf)
   {
-
     art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout>()->Get();
 
     // first make pads for things that don't depend on the number of
     // planes in the detector
@@ -102,11 +103,11 @@ namespace evd {
                                     TGNumberFormat::kNEAAnyNumber,
                                     TGNumberFormat::kNELLimitMinMax,
                                     0,
-                                    geo->Nplanes() - 1);
+                                    wireReadoutGeom.Nplanes() - 1);
 
     kPlane = 0;
     constexpr geo::PlaneID planeid{0, 0, 0};
-    kWire = TMath::Nint(0.5 * geo->Nwires(planeid));
+    kWire = TMath::Nint(0.5 * wireReadoutGeom.Nwires(planeid));
     kDistance = 1.5;
     fWireQ->SetPlaneWire(kPlane, kWire);
 
@@ -131,7 +132,7 @@ namespace evd {
                                    TGNumberFormat::kNEAAnyNumber,
                                    TGNumberFormat::kNELLimitMinMax,
                                    0,
-                                   geo->Nwires(planeid) - 1);
+                                   wireReadoutGeom.Nwires(planeid) - 1);
     // Initial value
     fWireEntry->SetNumber(kWire);
 
@@ -154,7 +155,7 @@ namespace evd {
                                     TGNumberFormat::kNEAAnyNumber,
                                     TGNumberFormat::kNELLimitMinMax,
                                     0,
-                                    geo->Nwires(planeid) - 1);
+                                    wireReadoutGeom.Nwires(planeid) - 1);
     // Initial value
     art::ServiceHandle<evd::ColorDrawingOptions const> cst;
     art::ServiceHandle<evd::SimulationDrawingOptions const> sdo;
@@ -231,7 +232,7 @@ namespace evd {
     unsigned int ntpc = geo->NTPC();
 
     // geometry to figure out the number of planes
-    unsigned int nplanes = geo->Nplanes();
+    unsigned int nplanes = wireReadoutGeom.Nplanes();
 
     // now determine the positions of all the time vs wire number
     // and charge histograms for the planes
@@ -259,10 +260,6 @@ namespace evd {
         fPlanes.push_back(
           new TWireProjPad(padname, padtitle, twx1, twy1, twx2, twy2, i + t * nplanes));
         fPlanes.back()->Draw();
-        //	fPlanes.back()->Pad()->AddExec("mousedispatch",
-        //				       Form("evd::TWQMultiTPCProjectionView::MouseDispatch(%d, (void*)%d)",
-        //					    i+t*nplanes, this)
-        //				       );
         fPlanes.back()->Pad()->AddExec(
           "mousedispatch",
           Form("evd::TWQMultiTPCProjectionView::MouseDispatch(%d, (void*)%lu)",
@@ -354,8 +351,6 @@ namespace evd {
   //......................................................................
   void TWQMultiTPCProjectionView::Draw(const char* opt)
   {
-    art::ServiceHandle<geo::Geometry const> geo;
-
     fPrevZoomOpt.clear();
 
     evdb::Canvas::fCanvas->cd();
@@ -395,60 +390,17 @@ namespace evd {
     evdb::Canvas::fCanvas->Update();
   }
 
-  // comment out this method as for now we don't want to change every
-  // plane to have the same range in wire number because wire numbers
-  // don't necessarily overlap from plane to plane, ie the same range
-  // isn't appropriate for every plane
-  //......................................................................
-  //   void TWQMultiTPCProjectionView::RangeChanged()
-  //   {
-  //     static int ilolast = -1;
-  //     static int ihilast = -1;
-  //
-  //     int ilo;
-  //     int ihi;
-  //     std::vector<int> lo;
-  //     std::vector<int> hi;
-  //     std::vector<bool> axischanged;
-  //     for(unsigned int i = 0; i < fPlanes.size(); ++i){
-  //       fPlanes[i]->GetWireRange(&ilo, &ihi);
-  //       lo.push_back(ilo);
-  //       hi.push_back(ihi);
-  //       axischanged.push_back((ilo != ilolast) || (ihi != ihilast));
-  //     }
-  //
-  //     TVirtualPad* ori = gPad;
-  //
-  //     // loop over the bools to see which axes need to change
-  //     for(unsigned int i = 0; i < axischanged.size(); ++i){
-  //       if (axischanged[i]) {
-  //    fPlanes[i]->SetWireRange(ilo, ihi);
-  //    fPlanes[i]->Pad()->cd();
-  //    fPlanes[i]->Pad()->Modified();
-  //    fPlanes[i]->Pad()->Update();
-  //
-  //    ilolast = ilo;
-  //    ihilast = ihi;
-  //       }
-  //     }
-  //
-  //     evdb::Canvas::fCanvas->cd();
-  //     evdb::Canvas::fCanvas->Modified();
-  //     evdb::Canvas::fCanvas->Update();
-  //     ori->cd();
-  //   }
   //......................................................................
   //......................................................................
   void TWQMultiTPCProjectionView::PrintCharge()
   {
-
-    art::ServiceHandle<geo::Geometry const> geo;
     art::ServiceHandle<evd::RawDrawingOptions const> rawopt;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
 
     geo::TPCID tpcid = rawopt->CurrentTPC();
 
     for (size_t iplane = 0; iplane < fPlanes.size(); ++iplane) {
-      if (geo->SignalType(geo::PlaneID(tpcid, iplane)) == geo::kCollection) {
+      if (wireReadoutGeom.SignalType(geo::PlaneID(tpcid, iplane)) == geo::kCollection) {
         double ch = 0, convch = 0;
         if (rawopt->fDrawRawDataOrCalibWires == 0) {
           fPlanes[iplane]->RawDataDraw()->GetChargeSum(iplane, ch, convch);
@@ -477,9 +429,6 @@ namespace evd {
 
     case kButton1Shift:
       shift_lock = 1;
-      //        TWQMultiTPCProjectionView::SelectHit() is undefined
-      //if(evdlayoutopt->fMakeClusters==1){wqpp->SelectHit(plane);}
-      //else {wqpp->SelectPoint(plane);}
       wqpp->SelectPoint(plane);
       break;
     case kButton1Up:
@@ -511,7 +460,7 @@ namespace evd {
     kPlane = plane;
     kWire = (unsigned int)TMath::Nint(x);
 
-    this->SetPlaneWire();
+    SetPlaneWire();
 
     return;
   }
@@ -540,37 +489,37 @@ namespace evd {
 
     // check if not clicking on a plane that is already in the ppoints list:
     int repeat_plane = -1;
-    for (size_t ii = 0; ii < this->ppoints.size(); ++ii)
-      if (ppx.plane == this->ppoints[ii].plane) {
-        this->ppoints[ii] = ppx;
+    for (size_t ii = 0; ii < ppoints.size(); ++ii)
+      if (ppx.plane == ppoints[ii].plane) {
+        ppoints[ii] = ppx;
         //clear View and draw new Marker
-        this->fPlanes[this->ppoints[ii].plane]->View()->Clear();
+        fPlanes[ppoints[ii].plane]->View()->Clear();
         if (evdlayoutopt->fShowEndPointMarkers)
-          this->fPlanes[this->ppoints[ii].plane]->View()->AddMarker(ppx.w, ppx.t, kRed, 29, 2.0);
+          fPlanes[ppoints[ii].plane]->View()->AddMarker(ppx.w, ppx.t, kRed, 29, 2.0);
         else
-          this->fPlanes[plane]->View()->AddMarker(0.0, 0.0, 2, 1, 0.1);
-        this->fPlanes[this->ppoints[ii].plane]->View()->Draw();
-        repeat_plane = this->ppoints[ii].plane;
+          fPlanes[plane]->View()->AddMarker(0.0, 0.0, 2, 1, 0.1);
+        fPlanes[ppoints[ii].plane]->View()->Draw();
+        repeat_plane = ppoints[ii].plane;
         break;
       }
 
     //if plane does not repeat and size of list is larger than 2 pop_front
     // and delete its marker. Otherwise just push_back.
     if (repeat_plane == -1) {
-      if (this->ppoints.size() >= 2) {
-        this->fPlanes[this->ppoints[0].plane]->Pad()->cd();
-        this->fPlanes[this->ppoints[0].plane]->View()->Clear();
-        this->fPlanes[this->ppoints[0].plane]->View()->Draw();
-        this->ppoints.pop_front();
+      if (ppoints.size() >= 2) {
+        fPlanes[ppoints[0].plane]->Pad()->cd();
+        fPlanes[ppoints[0].plane]->View()->Clear();
+        fPlanes[ppoints[0].plane]->View()->Draw();
+        ppoints.pop_front();
       }
-      this->ppoints.push_back(ppx);
-      this->fPlanes[plane]->Pad()->cd();
-      this->fPlanes[plane]->View()->Clear();
+      ppoints.push_back(ppx);
+      fPlanes[plane]->Pad()->cd();
+      fPlanes[plane]->View()->Clear();
       if (evdlayoutopt->fShowEndPointMarkers)
-        this->fPlanes[plane]->View()->AddMarker(ppx.w, ppx.t, kRed, 29, 2.0);
+        fPlanes[plane]->View()->AddMarker(ppx.w, ppx.t, kRed, 29, 2.0);
       else
-        this->fPlanes[plane]->View()->AddMarker(0.0, 0.0, 2, 1, 0.1);
-      this->fPlanes[plane]->View()->Draw();
+        fPlanes[plane]->View()->AddMarker(0.0, 0.0, 2, 1, 0.1);
+      fPlanes[plane]->View()->Draw();
     }
 
     return;
@@ -606,10 +555,9 @@ namespace evd {
       double xx1 = 0., yy1 = 0., zz1 = 0.;
       double length;
 
-      double y, z;
-
-      art::ServiceHandle<geo::Geometry const> geom;
       art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
+      art::ServiceHandle<geo::Geometry const> geom;
+      auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
       double ftimetick = sampling_rate(clockData) / 1000.;
       double larv = detProp.DriftVelocity(detProp.Efield(), detProp.Temperature());
 
@@ -617,14 +565,14 @@ namespace evd {
       geo::TPCID const tpcid{rawOpt->fCryostat, rawOpt->fTPC};
       geo::PlaneID const plane_0{tpcid, pline[0].plane};
       geo::PlaneID const plane_1{tpcid, pline[1].plane};
-      int chan1 = geom->PlaneWireToChannel(geo::WireID(plane_0, pline[0].w0));
-      int chan2 = geom->PlaneWireToChannel(geo::WireID(plane_1, pline[1].w0));
+      int chan1 = wireReadoutGeom.PlaneWireToChannel(geo::WireID(plane_0, pline[0].w0));
+      int chan2 = wireReadoutGeom.PlaneWireToChannel(geo::WireID(plane_1, pline[1].w0));
 
-      bool wires_cross = false;
+      std::optional<geo::WireIDIntersection> wires_cross{};
       bool time_good = false;
 
       if (fabs(pline[0].t0 - pline[1].t0) < 200) {
-        wires_cross = geom->ChannelsIntersect(chan1, chan2, y, z);
+        wires_cross = wireReadoutGeom.ChannelsIntersect(chan1, chan2);
         time_good = true;
       }
       else {
@@ -632,23 +580,23 @@ namespace evd {
         tt->InsLine(1, "time distance");
         fXYZPosition->SetText(tt);
         fXYZPosition->Update();
-        // return; //not returning, because may need to delete marker from wplane
+        //not returning, because may need to delete marker from wplane
       }
 
       if (wires_cross) {
         TGText* tt = new TGText("wires cross");
         fXYZPosition->SetText(tt);
         fXYZPosition->Update();
-        xyz_vertex_fit[1] = y;
-        xyz_vertex_fit[2] = z;
-        auto pos = geom->Plane(plane_0).GetBoxCenter();
+        xyz_vertex_fit[1] = wires_cross->y;
+        xyz_vertex_fit[2] = wires_cross->z;
+        auto pos = wireReadoutGeom.Plane(plane_0).GetBoxCenter();
         xyz_vertex_fit[0] = (pline[0].t0 - trigger_offset(clockData)) * larv * ftimetick + pos.X();
-        pos = geom->Plane(plane_1).GetBoxCenter();
+        pos = wireReadoutGeom.Plane(plane_1).GetBoxCenter();
         second_time = (pline[1].t0 - trigger_offset(clockData)) * larv * ftimetick + pos.X();
 
         xx0 = (xyz_vertex_fit[0] + second_time) / 2;
-        yy0 = y;
-        zz0 = z;
+        yy0 = wires_cross->y;
+        zz0 = wires_cross->z;
 
         //////////// the xyz vertex is found. Can proceed to calulate distance from edge
       }
@@ -659,17 +607,17 @@ namespace evd {
           fXYZPosition->SetText(tt);
           fXYZPosition->Update();
         }
-        // return; //not returning, because may need to delete marker from wplanereturn;
+        //not returning, because may need to delete marker from wplanereturn;
       }
       //find channels corresponding to found wires AT END OF LINE.
-      chan1 = geom->PlaneWireToChannel(geo::WireID(plane_0, pline[0].w1));
-      chan2 = geom->PlaneWireToChannel(geo::WireID(plane_1, pline[1].w1));
+      chan1 = wireReadoutGeom.PlaneWireToChannel(geo::WireID(plane_0, pline[0].w1));
+      chan2 = wireReadoutGeom.PlaneWireToChannel(geo::WireID(plane_1, pline[1].w1));
 
-      wires_cross = false;
+      wires_cross = std::nullopt;
       time_good = false;
 
       if (fabs(pline[0].t1 - pline[1].t1) < 200) {
-        wires_cross = geom->ChannelsIntersect(chan1, chan2, y, z);
+        wires_cross = wireReadoutGeom.ChannelsIntersect(chan1, chan2);
         time_good = true;
       }
       else {
@@ -677,24 +625,24 @@ namespace evd {
         tt->InsLine(1, "time distance");
         fXYZPosition->SetText(tt);
         fXYZPosition->Update();
-        // return; //not returning, because may need to delete marker from wplane
+        //not returning, because may need to delete marker from wplane
       }
 
       if (wires_cross) {
         TGText* tt = new TGText("wires do cross");
         fXYZPosition->SetText(tt);
         fXYZPosition->Update();
-        xyz_vertex_fit[1] = y;
-        xyz_vertex_fit[2] = z;
+        xyz_vertex_fit[1] = wires_cross->y;
+        xyz_vertex_fit[2] = wires_cross->z;
         constexpr geo::TPCID tpcid{0, 0};
-        auto pos = geom->Plane(geo::PlaneID(tpcid, pline[0].plane)).GetBoxCenter();
+        auto pos = wireReadoutGeom.Plane(geo::PlaneID(tpcid, pline[0].plane)).GetBoxCenter();
         xyz_vertex_fit[0] = (pline[0].t1 - trigger_offset(clockData)) * larv * ftimetick + pos.X();
-        pos = geom->Plane(geo::PlaneID(tpcid, pline[1].plane)).GetBoxCenter();
+        pos = wireReadoutGeom.Plane(geo::PlaneID(tpcid, pline[1].plane)).GetBoxCenter();
         second_time = (pline[1].t1 - trigger_offset(clockData)) * larv * ftimetick + pos.X();
 
         xx1 = (xyz_vertex_fit[0] + second_time) / 2;
-        yy1 = y;
-        zz1 = z;
+        yy1 = wires_cross->y;
+        zz1 = wires_cross->z;
       }
       else {
         if (time_good) { //otherwise the wires_cross are false by default
@@ -713,7 +661,7 @@ namespace evd {
       length = pow(xx0 - xx1, 2) + pow(yy0 - yy1, 2) + pow(zz0 - zz1, 2);
       length = pow(length, 0.5);
       return length;
-    } // end if( this->ppoints.size()>=2)
+    } // end if( ppoints.size()>=2)
 
     else {
       TGText* tt = new TGText("selected points");
@@ -745,11 +693,10 @@ namespace evd {
       double xyz_vertex_fit[3] = {0.};
       double second_time = 0.;
       geo::PlaneGeo::LocalPoint_t const origin{0., 0., 0.};
-      double y = 0.;
-      double z = 0.;
 
-      art::ServiceHandle<geo::Geometry const> geom;
       art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
+      art::ServiceHandle<geo::Geometry const> geom;
+      auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
       double ftimetick = sampling_rate(clockData) / 1000.;
       double larv = detProp.DriftVelocity(detProp.Efield(), detProp.Temperature());
 
@@ -758,14 +705,14 @@ namespace evd {
       geo::PlaneID const plane_1{tpcid, ppoints[1].plane};
 
       //find channels corresponding to found wires.
-      int chan1 = geom->PlaneWireToChannel(geo::WireID(plane_0, ppoints[0].w));
-      int chan2 = geom->PlaneWireToChannel(geo::WireID(plane_1, ppoints[1].w));
+      int chan1 = wireReadoutGeom.PlaneWireToChannel(geo::WireID(plane_0, ppoints[0].w));
+      int chan2 = wireReadoutGeom.PlaneWireToChannel(geo::WireID(plane_1, ppoints[1].w));
 
-      bool wires_cross = false;
+      std::optional<geo::WireIDIntersection> wires_cross{};
       bool time_good = false;
 
       if (fabs(ppoints[0].t - ppoints[1].t) < 200) {
-        wires_cross = geom->ChannelsIntersect(chan1, chan2, y, z);
+        wires_cross = wireReadoutGeom.ChannelsIntersect(chan1, chan2);
         time_good = true;
       }
       else {
@@ -773,20 +720,20 @@ namespace evd {
         tt->InsLine(1, "time distance");
         fXYZPosition->SetText(tt);
         fXYZPosition->Update();
-        // return; //not returning, because may need to delete marker from wplane
+        //not returning, because may need to delete marker from wplane
       }
 
       if (wires_cross) {
-        xyz_vertex_fit[1] = y;
-        xyz_vertex_fit[2] = z;
-        auto pos = geom->Plane(plane_0).toWorldCoords(origin);
+        xyz_vertex_fit[1] = wires_cross->y;
+        xyz_vertex_fit[2] = wires_cross->z;
+        auto pos = wireReadoutGeom.Plane(plane_0).toWorldCoords(origin);
         xyz_vertex_fit[0] = (ppoints[0].t - trigger_offset(clockData)) * larv * ftimetick + pos.X();
-        pos = geom->Plane(plane_1).toWorldCoords(origin);
+        pos = wireReadoutGeom.Plane(plane_1).toWorldCoords(origin);
         second_time = (ppoints[1].t - trigger_offset(clockData)) * larv * ftimetick + pos.X();
 
-        TGText* tt = new TGText(Form("z:%4.1f", z));
+        TGText* tt = new TGText(Form("z:%4.1f", wires_cross->z));
         tt->InsLine(1, Form("x:%4.1f,", (xyz_vertex_fit[0] + second_time) / 2));
-        tt->InsLine(1, Form("y:%4.1f,", y));
+        tt->InsLine(1, Form("y:%4.1f,", wires_cross->y));
         fXYZPosition->SetText(tt);
         fXYZPosition->Update();
         //////////// the xyz vertex is found. Can proceed to calulate distance from edge
@@ -798,7 +745,7 @@ namespace evd {
           fXYZPosition->SetText(tt);
           fXYZPosition->Update();
         }
-        // return; //not returning, because may need to delete marker from wplanereturn;
+        //not returning, because may need to delete marker from wplanereturn;
       }
       // extrapolate third point only if there are enough planes
       if (fPlanes.size() > 2) {
@@ -819,11 +766,12 @@ namespace evd {
         }
 
         geo::PlaneID const planeID{tpcid, wplane};
-        auto pos = geom->Plane(planeID).toWorldCoords(origin);
+        auto const& planeg = wireReadoutGeom.Plane(planeID);
+        auto pos = planeg.toWorldCoords(origin);
         pos.SetY(xyz_vertex_fit[1]);
         pos.SetZ(xyz_vertex_fit[2]);
 
-        wirevertex = geom->NearestWireID(pos, planeID).Wire;
+        wirevertex = planeg.NearestWireID(pos).Wire;
 
         double drifttick =
           ((xyz_vertex_fit[0]) / detProp.DriftVelocity(detProp.Efield(), detProp.Temperature())) *
@@ -847,15 +795,13 @@ namespace evd {
       gPad->Modified();
       gPad->Update();
       gPad->cd();
-    } // end if( this->ppoints.size()>=2)
+    } // end if( ppoints.size()>=2)
     else {
       TGText* tt = new TGText("selected points");
       tt->InsLine(1, "not enough");
       fXYZPosition->SetText(tt);
       fXYZPosition->Update();
     }
-
-    return;
   }
 
   //.......................................................................
@@ -970,7 +916,7 @@ namespace evd {
       if (wstart != 0 && tstart != 0 && (fabs(wend - wstart) > 0.01 * (xx2 - xx1)) &&
           (fabs(tend - tstart) > 0.01 * (yy2 - yy1) && curr_zooming_plane == plane)) {
 
-        this->SetZoom(plane, wstart, wend, tstart, tend);
+        SetZoom(plane, wstart, wend, tstart, tend);
         wstart = -1;
         tstart = -1;
       }
@@ -990,7 +936,7 @@ namespace evd {
     else
       zoom_opt = "0";
 
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout>()->Get();
     art::ServiceHandle<evd::RawDrawingOptions const> rawopt;
 
     ZoomOptionsMultiTPC zo;
@@ -1010,8 +956,8 @@ namespace evd {
       }
       else {
         geo::PlaneID const planeID(0, 0, iplane);
-        minw = -0.005 * (geo->Nwires(planeID) - 1);
-        maxw = 1.005 * (geo->Nwires(planeID) - 1);
+        minw = -0.005 * (wireReadoutGeom.Nwires(planeID) - 1);
+        maxw = 1.005 * (wireReadoutGeom.Nwires(planeID) - 1);
         mint = -0.005 * fPlanes[iplane]->RawDataDraw()->TotalClockTicks();
         maxt = 1.01 * fPlanes[iplane]->RawDataDraw()->TotalClockTicks();
       }
@@ -1089,8 +1035,6 @@ namespace evd {
     // enter zoom buttons
     art::ServiceHandle<evd::EvdLayoutOptions const> evdlayoutopt;
     if (!evdlayoutopt->fShowEndPointSection) return;
-
-    // int       fShowEndPointMarkers;             ///< Draw EndPoint Markers if clicked.
 
     fFindEndpoint = new TGTextButton(fVFrame, "&Find XYZ", 150);
     fFindEndpoint->Connect("Clicked()", "evd::TWQMultiTPCProjectionView", this, "FindEndPoint()");
@@ -1233,7 +1177,7 @@ namespace evd {
   {
     kPlane = (unsigned int)fPlaneEntry->GetNumberEntry()->GetNumber();
 
-    this->SetPlaneWire();
+    SetPlaneWire();
   }
 
   //-----------------------------------------------------------------
@@ -1241,7 +1185,7 @@ namespace evd {
   {
     kWire = (unsigned int)fWireEntry->GetNumberEntry()->GetNumber();
 
-    this->SetPlaneWire();
+    SetPlaneWire();
   }
 
   //-----------------------------------------------------------------
@@ -1259,7 +1203,7 @@ namespace evd {
     rawopt->fMinSignal = threshold;
 
     TVirtualPad* ori = gPad;
-    this->DrawPads(zoom_opt);
+    DrawPads(zoom_opt);
     evdb::Canvas::fCanvas->cd();
     evdb::Canvas::fCanvas->Modified();
     evdb::Canvas::fCanvas->Update();
@@ -1281,7 +1225,7 @@ namespace evd {
     }
 
     TVirtualPad* ori = gPad;
-    this->DrawPads(zoom_opt);
+    DrawPads(zoom_opt);
     evdb::Canvas::fCanvas->cd();
     evdb::Canvas::fCanvas->Modified();
     evdb::Canvas::fCanvas->Update();
@@ -1326,7 +1270,7 @@ namespace evd {
     fWireQ->Pad()->Modified();
     fWireQ->Pad()->Update();
 
-    this->DrawPads(zoom_opt);
+    DrawPads(zoom_opt);
     evdb::Canvas::fCanvas->cd();
     evdb::Canvas::fCanvas->Modified();
     evdb::Canvas::fCanvas->Update();

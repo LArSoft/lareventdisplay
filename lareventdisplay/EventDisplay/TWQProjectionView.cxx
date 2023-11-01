@@ -18,6 +18,7 @@
 #include "TVirtualX.h"
 
 #include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
 #include "larcorealg/Geometry/GeometryCore.h"
 #include "larcorealg/Geometry/PlaneGeo.h"
 #include "lardata/DetectorInfoServices/DetectorClocksService.h"
@@ -65,8 +66,7 @@ namespace evd {
     , isZoomAutomatic(art::ServiceHandle<evd::EvdLayoutOptions const>()->fAutoZoomInterest)
     , fLastEvent(new util::DataProductChangeTracker_t)
   {
-
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout>()->Get();
 
     // first make pads for things that don't depend on the number of
     // planes in the detector
@@ -120,11 +120,11 @@ namespace evd {
                                     TGNumberFormat::kNEAAnyNumber,
                                     TGNumberFormat::kNELLimitMinMax,
                                     0,
-                                    geo->Nplanes() - 1);
+                                    wireReadoutGeom.Nplanes() - 1);
 
     kPlane = 0;
     constexpr geo::TPCID tpcid{0, 0};
-    kWire = TMath::Nint(0.5 * geo->Nwires(geo::PlaneID{tpcid, 0}));
+    kWire = TMath::Nint(0.5 * wireReadoutGeom.Nwires(geo::PlaneID{tpcid, 0}));
     kDistance = 1.5;
     fWireQ->SetPlaneWire(kPlane, kWire);
 
@@ -142,7 +142,7 @@ namespace evd {
 
     // wire number entry
     unsigned int maxwire = 0;
-    for (auto const& plane : geo->Iterate<geo::PlaneGeo>(tpcid)) {
+    for (auto const& plane : wireReadoutGeom.Iterate<geo::PlaneGeo>(tpcid)) {
       maxwire = (plane.Nwires() - 1 > maxwire) ? plane.Nwires() - 1 : maxwire;
     }
 
@@ -177,7 +177,7 @@ namespace evd {
                                     TGNumberFormat::kNEAAnyNumber,
                                     TGNumberFormat::kNELLimitMinMax,
                                     0,
-                                    geo->Nwires(geo::PlaneID{tpcid, 0}) - 1);
+                                    wireReadoutGeom.Nwires(geo::PlaneID{tpcid, 0}) - 1);
     // Initial value
     art::ServiceHandle<evd::ColorDrawingOptions const> cst;
     art::ServiceHandle<evd::SimulationDrawingOptions> sdo;
@@ -240,7 +240,7 @@ namespace evd {
     fFrame->AddFrame(fThresLabel, new TGLayoutHints(kLHintsBottom | kLHintsRight, 0, 0, 5, 1));
 
     // geometry to figure out the number of planes
-    unsigned int nplanes = geo->Nplanes();
+    unsigned int nplanes = wireReadoutGeom.Nplanes();
 
     if (evdlayoutopt->fShowSideBar)
       SetUpSideBar();
@@ -270,7 +270,6 @@ namespace evd {
       evdb::Canvas::fCanvas->cd();
       fPlanes.push_back(new TWireProjPad(padname, padtitle, twx1, twy1, twx2, twy2, i));
       fPlanes[i]->Draw();
-      //      fPlanes[i]->Pad()->AddExec("mousedispatch",Form("evd::TWQProjectionView::MouseDispatch(%d, (void*)%d)", i, this));
       fPlanes[i]->Pad()->AddExec(
         "mousedispatch",
         Form("evd::TWQProjectionView::MouseDispatch(%d, (void*)%lu)", i, (unsigned long)this));
@@ -379,8 +378,6 @@ namespace evd {
 
     OnNewEvent(); // if the current event is a new one, we need some resetting
 
-    art::ServiceHandle<geo::Geometry const> geo;
-
     fPrevZoomOpt.clear();
 
     evdb::Canvas::fCanvas->cd();
@@ -412,32 +409,8 @@ namespace evd {
       fZoomOpt.wmax[i] = ZoomParams[1];
       fZoomOpt.tmin[i] = ZoomParams[2];
       fZoomOpt.tmax[i] = ZoomParams[3];
-      // Charge deposit feature - not working yet
-      //
-      //  if(geo->Plane(i).SignalType()==geo::kCollection)
-      //  {
-      //	planePad->RecoBaseDraw()->GetChargeSum(i,Charge,ConvCharge);
-      //   }
     }
     mf::LogDebug("TWQProjectionView") << "Done drawing " << nPlanes << " planes";
-
-    // Charge deposit feature - not working yet
-    //  std::stringstream ss;
-    // if(ConvCharge!=0)
-    // {
-    //  ss << ConvCharge << "MeV"<<std::endl;
-    //  }
-    // else
-    //  {
-    //    ss<<" no reco info";
-    //  }
-    //
-    //  TGText * tt = new TGText(ss.str().c_str());
-    //  tt->InsLine(1, "Approx EDep:");
-    //  fAngleInfo->SetText(tt);
-    //
-    //  ss.flush();
-    //
 
     // Reset any text boxes which are enabled
 
@@ -449,50 +422,6 @@ namespace evd {
     mf::LogDebug("TWQProjectionView") << "Done drawing";
   }
 
-  // comment out this method as for now we don't want to change every
-  // plane to have the same range in wire number because wire numbers
-  // don't necessarily overlap from plane to plane, ie the same range
-  // isn't appropriate for every plane
-  //......................................................................
-  //   void TWQProjectionView::RangeChanged()
-  //   {
-  //     static int ilolast = -1;
-  //     static int ihilast = -1;
-  //
-  //     int ilo;
-  //     int ihi;
-  //     std::vector<int> lo;
-  //     std::vector<int> hi;
-  //     std::vector<bool> axischanged;
-  //     for(unsigned int i = 0; i < fPlanes.size(); ++i){
-  //       fPlanes[i]->GetWireRange(&ilo, &ihi);
-  //       lo.push_back(ilo);
-  //       hi.push_back(ihi);
-  //       axischanged.push_back((ilo != ilolast) || (ihi != ihilast));
-  //     }
-  //
-  //     TVirtualPad* ori = gPad;
-  //
-  //     // loop over the bools to see which axes need to change
-  //     for(unsigned int i = 0; i < axischanged.size(); ++i){
-  //       if (axischanged[i]) {
-  //    fPlanes[i]->SetWireRange(ilo, ihi);
-  //    fPlanes[i]->Pad()->cd();
-  //    fPlanes[i]->Pad()->Modified();
-  //    fPlanes[i]->Pad()->Update();
-  //
-  //    ilolast = ilo;
-  //    ihilast = ihi;
-  //       }
-  //     }
-  //
-  //     evdb::Canvas::fCanvas->cd();
-  //     evdb::Canvas::fCanvas->Modified();
-  //     evdb::Canvas::fCanvas->Update();
-  //     ori->cd();
-  //   }
-  //......................................................................
-
   //......................................................................
   void TWQProjectionView::SetTestFlag(int number)
   {
@@ -503,13 +432,12 @@ namespace evd {
   //......................................................................
   void TWQProjectionView::PrintCharge()
   {
-
-    art::ServiceHandle<geo::Geometry const> geo;
     art::ServiceHandle<evd::RawDrawingOptions const> rawopt;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
 
     for (size_t iplane = 0; iplane < fPlanes.size(); ++iplane) {
       geo::PlaneID planeid(rawopt->CurrentTPC(), iplane);
-      if (geo->SignalType(planeid) != geo::kCollection) continue;
+      if (wireReadoutGeom.SignalType(planeid) != geo::kCollection) continue;
 
       double ch = 0, convch = 0;
       if (rawopt->fDrawRawDataOrCalibWires == 0) {
@@ -670,9 +598,8 @@ namespace evd {
       double xx1 = 0., yy1 = 0., zz1 = 0.;
       double length;
 
-      double y, z;
-
       art::ServiceHandle<geo::Geometry const> geom;
+      auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
       art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
       double ftimetick = sampling_rate(clockData) / 1000.;
       double larv = detProp.DriftVelocity(detProp.Efield(), detProp.Temperature());
@@ -681,14 +608,11 @@ namespace evd {
       geo::WireID wire1(rawOpt->fCryostat, rawOpt->fTPC, pline[0].plane, pline[0].w0);
       geo::WireID wire2(rawOpt->fCryostat, rawOpt->fTPC, pline[1].plane, pline[1].w0);
 
-      bool wires_cross = false;
+      std::optional<geo::WireIDIntersection> wires_cross{};
       bool time_good = false;
 
       if (std::abs(pline[0].t0 - pline[1].t0) < 200) {
-        geo::WireIDIntersection widIntersect;
-        wires_cross = geom->WireIDsIntersect(wire1, wire2, widIntersect);
-        y = widIntersect.y;
-        z = widIntersect.z;
+        wires_cross = wireReadoutGeom.WireIDsIntersect(wire1, wire2);
         time_good = true;
       }
       else {
@@ -703,16 +627,16 @@ namespace evd {
         TGText* tt = new TGText("wires cross");
         fXYZPosition->SetText(tt);
         fXYZPosition->Update();
-        xyz_vertex_fit[1] = y;
-        xyz_vertex_fit[2] = z;
-        auto pos = geom->Plane(geo::PlaneID(tpcid, pline[0].plane)).GetBoxCenter();
+        xyz_vertex_fit[1] = wires_cross->y;
+        xyz_vertex_fit[2] = wires_cross->z;
+        auto pos = wireReadoutGeom.Plane(geo::PlaneID(tpcid, pline[0].plane)).GetBoxCenter();
         xyz_vertex_fit[0] = (pline[0].t0 - trigger_offset(clockData)) * larv * ftimetick + pos.X();
-        pos = geom->Plane(geo::PlaneID(tpcid, pline[1].plane)).GetBoxCenter();
+        pos = wireReadoutGeom.Plane(geo::PlaneID(tpcid, pline[1].plane)).GetBoxCenter();
         second_time = (pline[1].t0 - trigger_offset(clockData)) * larv * ftimetick + pos.X();
 
         xx0 = (xyz_vertex_fit[0] + second_time) / 2;
-        yy0 = y;
-        zz0 = z;
+        yy0 = wires_cross->y;
+        zz0 = wires_cross->z;
 
         //////////// the xyz vertex is found. Can proceed to calulate distance from edge
       }
@@ -728,14 +652,11 @@ namespace evd {
       wire1.Wire = pline[0].w1;
       wire2.Wire = pline[1].w1;
 
-      wires_cross = false;
+      wires_cross = std::nullopt;
       time_good = false;
 
       if (std::abs(pline[0].t1 - pline[1].t1) < 200) {
-        geo::WireIDIntersection widIntersect;
-        wires_cross = geom->WireIDsIntersect(wire1, wire2, widIntersect);
-        y = widIntersect.y;
-        z = widIntersect.z;
+        wires_cross = wireReadoutGeom.WireIDsIntersect(wire1, wire2);
         time_good = true;
       }
       else {
@@ -750,16 +671,16 @@ namespace evd {
         TGText* tt = new TGText("wires do cross");
         fXYZPosition->SetText(tt);
         fXYZPosition->Update();
-        xyz_vertex_fit[1] = y;
-        xyz_vertex_fit[2] = z;
-        auto pos = geom->Plane(geo::PlaneID(tpcid, pline[0].plane)).GetBoxCenter();
+        xyz_vertex_fit[1] = wires_cross->y;
+        xyz_vertex_fit[2] = wires_cross->z;
+        auto pos = wireReadoutGeom.Plane(geo::PlaneID(tpcid, pline[0].plane)).GetBoxCenter();
         xyz_vertex_fit[0] = (pline[0].t1 - trigger_offset(clockData)) * larv * ftimetick + pos.X();
-        pos = geom->Plane(geo::PlaneID(tpcid, pline[1].plane)).GetBoxCenter();
+        pos = wireReadoutGeom.Plane(geo::PlaneID(tpcid, pline[1].plane)).GetBoxCenter();
         second_time = (pline[1].t1 - trigger_offset(clockData)) * larv * ftimetick + pos.X();
 
         xx1 = (xyz_vertex_fit[0] + second_time) / 2;
-        yy1 = y;
-        zz1 = z;
+        yy1 = wires_cross->y;
+        zz1 = wires_cross->z;
       }
       else {
         if (time_good) { //otherwise the wires_cross are false by default
@@ -808,25 +729,19 @@ namespace evd {
       double xyz_vertex_fit[3] = {0.};
       double second_time = 0.;
       geo::PlaneGeo::LocalPoint_t const origin{0., 0., 0.};
-      double y = 0.;
-      double z = 0.;
 
-      art::ServiceHandle<geo::Geometry const> geom;
+      auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
       art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
 
       //find channels corresponding to found wires.
       geo::WireID wire1(rawOpt->fCryostat, rawOpt->fTPC, ppoints[0].plane, ppoints[0].w);
       geo::WireID wire2(rawOpt->fCryostat, rawOpt->fTPC, ppoints[1].plane, ppoints[1].w);
 
-      bool wires_cross = false;
+      std::optional<geo::WireIDIntersection> wires_cross{};
       bool time_good = false;
 
       if (std::abs(ppoints[0].t - ppoints[1].t) < 200) {
-        geo::WireIDIntersection widIntersect;
-        geom->WireIDsIntersect(wire1, wire2, widIntersect);
-        y = widIntersect.y;
-        z = widIntersect.z;
-        wires_cross = true;
+        wires_cross = wireReadoutGeom.WireIDsIntersect(wire1, wire2);
         time_good = true;
       }
       else {
@@ -837,17 +752,17 @@ namespace evd {
       }
 
       if (wires_cross) {
-        xyz_vertex_fit[1] = y;
-        xyz_vertex_fit[2] = z;
+        xyz_vertex_fit[1] = wires_cross->y;
+        xyz_vertex_fit[2] = wires_cross->z;
 
         xyz_vertex_fit[0] =
           detProp.ConvertTicksToX(ppoints[0].t, ppoints[0].plane, rawOpt->fTPC, rawOpt->fCryostat);
         second_time =
           detProp.ConvertTicksToX(ppoints[1].t, ppoints[1].plane, rawOpt->fTPC, rawOpt->fCryostat);
 
-        TGText* tt = new TGText(Form("z:%4.1f", z));
+        TGText* tt = new TGText(Form("z:%4.1f", wires_cross->z));
         tt->InsLine(1, Form("x:%4.1f,", (xyz_vertex_fit[0] + second_time) / 2));
-        tt->InsLine(1, Form("y:%4.1f,", y));
+        tt->InsLine(1, Form("y:%4.1f,", wires_cross->y));
         fXYZPosition->SetText(tt);
         fXYZPosition->Update();
         //////////// the xyz vertex is found. Can proceed to calulate distance from edge
@@ -880,11 +795,12 @@ namespace evd {
         }
 
         geo::PlaneID const planeID{rawOpt->fCryostat, rawOpt->fTPC, wplane};
-        auto pos = geom->Plane(planeID).toWorldCoords(origin);
+        auto const& planeg = wireReadoutGeom.Plane(planeID);
+        auto pos = planeg.toWorldCoords(origin);
         pos.SetY(xyz_vertex_fit[1]);
         pos.SetZ(xyz_vertex_fit[2]);
 
-        wirevertex = geom->NearestWireID(pos, planeID).Wire;
+        wirevertex = planeg.NearestWireID(pos).Wire;
 
         double timestart = detProp.ConvertXToTicks(xyz_vertex_fit[0], planeID);
 
@@ -921,10 +837,11 @@ namespace evd {
     }
 
     art::ServiceHandle<geo::Geometry const> geom;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
     auto const clockData = art::ServiceHandle<detinfo::DetectorClocksService>()->DataFor(*pEvent);
     auto const detProp =
       art::ServiceHandle<detinfo::DetectorPropertiesService>()->DataFor(*pEvent, clockData);
-    util::GeometryUtilities const gser{*geom, clockData, detProp};
+    util::GeometryUtilities const gser{*geom, wireReadoutGeom, clockData, detProp};
 
     art::ServiceHandle<evd::EvdLayoutOptions const> evdlayoutoptions;
     if (evdlayoutoptions->fMakeClusters) {
@@ -1296,7 +1213,7 @@ namespace evd {
     else
       zoom_opt = "0";
 
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout>()->Get();
     art::ServiceHandle<evd::RawDrawingOptions const> rawopt;
 
     ZoomOptions zo;
@@ -1315,7 +1232,7 @@ namespace evd {
         if (test != 0) continue;
       }
       else {
-        auto const num_wires = geo->Nwires(geo::PlaneID(0, 0, iplane));
+        auto const num_wires = wireReadoutGeom.Nwires(geo::PlaneID(0, 0, iplane));
         minw = -0.005 * (num_wires - 1);
         maxw = 1.005 * (num_wires - 1);
         mint = -0.005 * fPlanes[iplane]->RawDataDraw()->TotalClockTicks();
@@ -1855,8 +1772,8 @@ namespace evd {
   //-----------------------------------------------------------------
   void TWQProjectionView::SetWire()
   {
-    art::ServiceHandle<geo::Geometry const> geo;
-    auto const num_wires = geo->Nwires(geo::PlaneID(0, 0, kPlane));
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout>()->Get();
+    auto const num_wires = wireReadoutGeom.Nwires(geo::PlaneID(0, 0, kPlane));
     kWire = (num_wires - 1 > (unsigned int)fWireEntry->GetNumberEntry()->GetNumber()) ?
               (unsigned int)fWireEntry->GetNumberEntry()->GetNumber() :
               num_wires - 1;

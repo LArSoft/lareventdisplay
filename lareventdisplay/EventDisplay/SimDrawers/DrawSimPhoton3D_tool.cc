@@ -3,7 +3,8 @@
 /// \author T. Usher
 ////////////////////////////////////////////////////////////////////////
 
-#include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
+#include "larcorealg/Geometry/OpDetGeo.h"
 #include "lardataobj/Simulation/SimPhotons.h"
 #include "lareventdisplay/EventDisplay/ColorDrawingOptions.h"
 #include "lareventdisplay/EventDisplay/SimDrawers/ISim3DDrawer.h"
@@ -26,9 +27,7 @@ namespace evdb_tool {
 
   class DrawSimPhoton3D : public ISim3DDrawer {
   public:
-    explicit DrawSimPhoton3D(const fhicl::ParameterSet& pset);
-
-    ~DrawSimPhoton3D();
+    explicit DrawSimPhoton3D(const fhicl::ParameterSet&) {}
 
     void Draw(const art::Event&, evdb::View3D*) const override;
 
@@ -41,18 +40,6 @@ namespace evdb_tool {
                             int) const;
   };
 
-  //----------------------------------------------------------------------
-  // Constructor.
-  DrawSimPhoton3D::DrawSimPhoton3D(const fhicl::ParameterSet& pset)
-  {
-    //    fNumPoints     = pset.get< int>("NumPoints",     1000);
-    //    fFloatBaseline = pset.get<bool>("FloatBaseline", false);
-
-    return;
-  }
-
-  DrawSimPhoton3D::~DrawSimPhoton3D() {}
-
   void DrawSimPhoton3D::Draw(const art::Event& evt, evdb::View3D* view) const
   {
     art::ServiceHandle<evd::SimulationDrawingOptions> drawOpt;
@@ -60,8 +47,8 @@ namespace evdb_tool {
     // If the option is turned off, there's nothing to do
     if (!drawOpt->fShowSimPhotonInfo) return;
 
-    // Recover a handle to the collection of MCParticles
-    // We need these so we can determine the offset (if any)
+    // Recover a handle to the collection of MCParticles We need these so we can determine
+    // the offset (if any)
     art::Handle<std::vector<simb::MCParticle>> mcParticleHandle;
 
     evt.getByLabel(drawOpt->fG4ModuleLabel, mcParticleHandle);
@@ -86,7 +73,6 @@ namespace evdb_tool {
         << "Starting loop over " << simPhotonsHandle->size() << " SimPhotons, " << std::endl;
 
       // Get the detector properties, clocks...
-      art::ServiceHandle<geo::Geometry> geom;
       art::ServiceHandle<evd::ColorDrawingOptions> cst;
 
       // First step is to create a map between MCParticle and SimEnergyDeposit objects...
@@ -125,38 +111,8 @@ namespace evdb_tool {
         // Go through all contributors to this channel
         for (const auto& mcPartToOnePhoton : chanToMCPartToOnePhoton.second) {
           // Current scheme will ignore displacement in time... need to come back to this at some point...
-          //                // The first task we need to take on is to find the offset for the energy deposit
-          //                // This is for the case of "out of time" particles... (e.g. cosmic rays)
-          //                double g4Ticks(detClocks->TPCG4Time2Tick(mcPartToOnePhoton.first->T())-theDetector->TriggerOffset());
-          //                double xOffset(0.);
-          //                double xPosMinTick(0.);
-          //                double xPosMaxTick(std::numeric_limits<double>::max());
 
           for (const auto& onePhoton : mcPartToOnePhoton.second) {
-            //                    Eigen::Vector3f point(onePhoton->InitialPosition.X(),onePhoton->InitialPosition.Y(),onePhoton->InitialPosition.Z());
-            //
-            //                    std::cout << "    - Initial: " << onePhoton->InitialPosition.X() << "/" << onePhoton->InitialPosition.Y() << "/" << onePhoton->InitialPosition.Z() << ", final : " //<<   onePhoton->FinalLocalPosition.X() << "/" << onePhoton->FinalLocalPosition.Y() << "/" << onePhoton->FinalLocalPosition.Z() << std::endl;
-            //
-            //                    // If we have cosmic rays then we need to get the offset which allows translating from
-            //                    // when they were generated vs when they were tracked.
-            //                    // Note that this also explicitly checks that they are in a TPC volume
-            //                    try
-            //                    {
-            //                        geo::TPCID   tpcID = geom->PositionToTPCID(geo::Point_t(point[0],point[1],point[2]));
-            //
-            //                        if (tpcID.Cryostat == geo::CryostatID::InvalidID || tpcID.TPC == geo::TPCID::InvalidID) continue;
-            //
-            //                        geo::PlaneID planeID(tpcID,0);
-            //
-            //                        xPosMinTick = theDetector->ConvertTicksToX(0,planeID);
-            //                        xPosMaxTick = theDetector->ConvertTicksToX(theDetector->NumberTimeSamples(),planeID);
-            //                        xOffset     = theDetector->ConvertTicksToX(g4Ticks, planeID) - xPosMinTick;
-            //
-            //                        if (xPosMaxTick < xPosMinTick) std::swap(xPosMinTick,xPosMaxTick);
-            //                    }
-            //                    catch(...) {continue;}
-
-            // Recover the deposited energy
             totalE += onePhoton->Energy;
           }
         }
@@ -173,6 +129,7 @@ namespace evdb_tool {
         (cst->fRecoQHigh[geo::kCollection] - cst->fRecoQLow[geo::kCollection]) * yzWidthScale);
 
       // Go through the channels and draw the objects
+      auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
       for (const auto& channelToEnergy : channelToEnergyMap) {
         // Recover the color index based on energy
         float widthFactor =
@@ -181,7 +138,8 @@ namespace evdb_tool {
           cst->fRecoQLow[geo::kCollection] + energyDepositScale * channelToEnergy.second;
 
         // Recover the position for this channel
-        const geo::OpDetGeo& opHitGeo = geom->OpDetGeoFromOpChannel(channelToEnergy.first);
+        const geo::OpDetGeo& opHitGeo =
+          wireReadoutGeom.OpDetGeoFromOpChannel(channelToEnergy.first);
         const geo::Point_t& opHitPos = opHitGeo.GetCenter();
         float xWidth = 0.01;
         float zWidth = widthFactor * opHitGeo.HalfW();
@@ -198,8 +156,6 @@ namespace evdb_tool {
         DrawRectangularBox(view, coordsLo, coordsHi, energyColorIdx, 1, 1);
       }
     }
-
-    return;
   }
 
   void DrawSimPhoton3D::DrawRectangularBox(evdb::View3D* view,
@@ -236,8 +192,6 @@ namespace evdb_tool {
     bottom.SetPoint(2, coordsHi[0], coordsLo[1], coordsHi[2]);
     bottom.SetPoint(3, coordsLo[0], coordsLo[1], coordsHi[2]);
     bottom.SetPoint(4, coordsLo[0], coordsLo[1], coordsLo[2]);
-
-    return;
   }
 
   DEFINE_ART_CLASS_TOOL(DrawSimPhoton3D)

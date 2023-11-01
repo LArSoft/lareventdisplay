@@ -17,7 +17,7 @@
 #include "TString.h"
 #include "TVirtualPad.h"
 
-#include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
 #include "lardata/DetectorInfoServices/DetectorPropertiesService.h"
 #include "lardata/Utilities/PxUtils.h"
 #include "lareventdisplay/EventDisplay/EvdLayoutOptions.h"
@@ -114,34 +114,33 @@ namespace evd {
   {
     fCurrentZoom.resize(4);
 
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
+    Pad()->cd();
 
-    this->Pad()->cd();
-
-    this->Pad()->SetLeftMargin(0.070);
-    this->Pad()->SetRightMargin(0.010);
+    Pad()->SetLeftMargin(0.070);
+    Pad()->SetRightMargin(0.010);
 
     // how many planes in the detector and
     // which plane is this one?
 
-    unsigned int planes = geo->Nplanes();
-    this->Pad()->SetTopMargin(0.005);
-    this->Pad()->SetBottomMargin(0.110);
+    unsigned int planes = wireReadoutGeom.Nplanes();
+    Pad()->SetTopMargin(0.005);
+    Pad()->SetBottomMargin(0.110);
 
     // there has to be a better way of doing this that does
     // not have a case for each number of planes in a detector
     if (planes == 2 && fPlane > 0) {
-      this->Pad()->SetTopMargin(0.110);
-      this->Pad()->SetBottomMargin(0.005);
+      Pad()->SetTopMargin(0.110);
+      Pad()->SetBottomMargin(0.005);
     }
     else if (planes > 2) {
       if (fPlane == 1) {
-        this->Pad()->SetTopMargin(0.055);
-        this->Pad()->SetBottomMargin(0.055);
+        Pad()->SetTopMargin(0.055);
+        Pad()->SetBottomMargin(0.055);
       }
       else if (fPlane == 2) {
-        this->Pad()->SetTopMargin(0.110);
-        this->Pad()->SetBottomMargin(0.005);
+        Pad()->SetTopMargin(0.110);
+        Pad()->SetBottomMargin(0.005);
       }
     }
 
@@ -150,24 +149,24 @@ namespace evd {
 
     // picking the information from the current TPC
     art::ServiceHandle<evd::RawDrawingOptions const> rawopt;
-    auto const signalType = geo->SignalType({rawopt->CurrentTPC(), fPlane});
+    auto const signalType = wireReadoutGeom.SignalType({rawopt->CurrentTPC(), fPlane});
     TString xtitle = ";Induction Wire;t (tdc)";
     if (signalType == geo::kCollection) xtitle = ";Collection Wire;t (tdc)";
 
-    unsigned int const nWires = geo->Nwires({rawopt->CurrentTPC(), fPlane});
+    unsigned int const nWires = wireReadoutGeom.Nwires({rawopt->CurrentTPC(), fPlane});
     unsigned int const nTicks = RawDataDraw()->TotalClockTicks();
 
     fXLo = -0.005 * (nWires - 1);
     fXHi = 1.005 * (nWires - 1);
-    fYLo = 0.990 * (unsigned int)(this->RawDataDraw()->StartTick());
-    fYHi = 1.005 * std::min((unsigned int)(this->RawDataDraw()->StartTick() + nTicks), nTicks);
+    fYLo = 0.990 * (unsigned int)(RawDataDraw()->StartTick());
+    fYHi = 1.005 * std::min((unsigned int)(RawDataDraw()->StartTick() + nTicks), nTicks);
 
     fOri = rawopt->fAxisOrientation;
     if (fOri > 0) {
       fYLo = -0.005 * (nWires - 1);
       fYHi = 1.005 * (nWires - 1);
-      fYLo = 0.990 * (unsigned int)(this->RawDataDraw()->StartTick());
-      fYHi = 1.005 * std::min((unsigned int)(this->RawDataDraw()->StartTick() + nTicks), nTicks);
+      fYLo = 0.990 * (unsigned int)(RawDataDraw()->StartTick());
+      fYHi = 1.005 * std::min((unsigned int)(RawDataDraw()->StartTick() + nTicks), nTicks);
       fXLo = -0.005 * nTicks;
       fXHi = 1.010 * nTicks;
       xtitle = ";t (tdc);InductionWire";
@@ -227,30 +226,29 @@ namespace evd {
         art::ServiceHandle<detinfo::DetectorPropertiesService const>()->DataFor(evt, clockData);
       art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
 
-      this->SimulationDraw()->MCTruthVectors2D(evt, fView, fPlane);
+      SimulationDraw()->MCTruthVectors2D(evt, fView, fPlane);
 
       // the 2D pads have too much detail to be rendered on screen;
       // to act smarter, RawDataDrawer needs to know the range being plotted
-      this->RawDataDraw()->ExtractRange(fPad, &GetCurrentZoom());
-      this->RawDataDraw()->RawDigit2D(
-        evt, detProp, fView, fPlane, GetDrawOptions().bZoom2DdrawToRoI);
+      RawDataDraw()->ExtractRange(fPad, &GetCurrentZoom());
+      RawDataDraw()->RawDigit2D(evt, detProp, fView, fPlane, GetDrawOptions().bZoom2DdrawToRoI);
 
-      this->RecoBaseDraw()->Wire2D(evt, fView, fPlane);
-      this->RecoBaseDraw()->Hit2D(evt, detProp, fView, fPlane);
+      RecoBaseDraw()->Wire2D(evt, fView, fPlane);
+      RecoBaseDraw()->Hit2D(evt, detProp, fView, fPlane);
 
       if (recoOpt->fUseHitSelector)
-        this->RecoBaseDraw()->Hit2D(
-          this->HitSelectorGet()->GetSelectedHits(fPlane), kSelectedColor, fView, true);
+        RecoBaseDraw()->Hit2D(
+          HitSelectorGet()->GetSelectedHits(fPlane), kSelectedColor, fView, true);
 
-      this->RecoBaseDraw()->Slice2D(evt, detProp, fView, fPlane);
-      this->RecoBaseDraw()->Cluster2D(evt, clockData, detProp, fView, fPlane);
-      this->RecoBaseDraw()->EndPoint2D(evt, fView, fPlane);
-      this->RecoBaseDraw()->Prong2D(evt, clockData, detProp, fView, fPlane);
-      this->RecoBaseDraw()->Vertex2D(evt, detProp, fView, fPlane);
-      this->RecoBaseDraw()->Seed2D(evt, detProp, fView, fPlane);
-      this->RecoBaseDraw()->OpFlash2D(evt, clockData, detProp, fView, fPlane);
-      this->RecoBaseDraw()->Event2D(evt, fView, fPlane);
-      this->RecoBaseDraw()->DrawTrackVertexAssns2D(evt, clockData, detProp, fView, fPlane);
+      RecoBaseDraw()->Slice2D(evt, detProp, fView, fPlane);
+      RecoBaseDraw()->Cluster2D(evt, clockData, detProp, fView, fPlane);
+      RecoBaseDraw()->EndPoint2D(evt, fView, fPlane);
+      RecoBaseDraw()->Prong2D(evt, clockData, detProp, fView, fPlane);
+      RecoBaseDraw()->Vertex2D(evt, detProp, fView, fPlane);
+      RecoBaseDraw()->Seed2D(evt, detProp, fView, fPlane);
+      RecoBaseDraw()->OpFlash2D(evt, clockData, detProp, fView, fPlane);
+      RecoBaseDraw()->Event2D(evt, fView, fPlane);
+      RecoBaseDraw()->DrawTrackVertexAssns2D(evt, clockData, detProp, fView, fPlane);
 
       UpdatePad();
     } // if (evt)
@@ -283,7 +281,7 @@ namespace evd {
     // Check if we should zoom the displays;
     // if there is no event, we have no clue about the region of interest
     // and therefore we don't touch anything
-    if (opt == 0 && evtPtr) { this->ShowFull(); }
+    if (opt == 0 && evtPtr) { ShowFull(); }
 
     MF_LOG_DEBUG("TWireProjPad") << "Started rendering plane " << fPlane;
 
@@ -297,8 +295,8 @@ namespace evd {
   {
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
     if (recoOpt->fUseHitSelector) {
-      this->HitSelectorGet()->ClearHitList(fPlane);
-      this->Draw();
+      HitSelectorGet()->ClearHitList(fPlane);
+      Draw();
     }
   }
 
@@ -399,8 +397,8 @@ namespace evd {
       auto const& evt = *evtPtr;
       art::ServiceHandle<evd::RecoDrawingOptions const> recoopt;
       if (recoopt->fUseHitSelector) {
-        this->HitSelectorGet()->SaveHits(evt, fPlane, i1, i2, y1, y2, distance, good_plane);
-        this->Draw(zoom_opt);
+        HitSelectorGet()->SaveHits(evt, fPlane, i1, i2, y1, y2, distance, good_plane);
+        Draw(zoom_opt);
       }
     }
   }
@@ -415,7 +413,7 @@ namespace evd {
     if (evt) {
       art::ServiceHandle<evd::RecoDrawingOptions const> recoopt;
       if (recoopt->fUseHitSelector)
-        KineticEnergy = this->HitSelectorGet()->SaveSeedLines(*evt, seedlines, distance);
+        KineticEnergy = HitSelectorGet()->SaveSeedLines(*evt, seedlines, distance);
     }
     return KineticEnergy;
   }
@@ -428,8 +426,8 @@ namespace evd {
     if (evt) {
       art::ServiceHandle<evd::RecoDrawingOptions const> recoopt;
       if (recoopt->fUseHitSelector) {
-        this->HitSelectorGet()->ChangeHit(*evt, fPlane, x, y);
-        this->Draw(zoom_opt);
+        HitSelectorGet()->ChangeHit(*evt, fPlane, x, y);
+        Draw(zoom_opt);
       }
     }
   }
@@ -438,7 +436,7 @@ namespace evd {
   void TWireProjPad::ClearandUpdatePad()
   {
     fPad->Clear();
-    this->UpdatePad();
+    UpdatePad();
 
     return;
   }
@@ -463,7 +461,7 @@ namespace evd {
     fPad->cd();
     if (deleting) {
       fPad->Clear();
-      this->Draw(zoom_opt);
+      Draw(zoom_opt);
     }
     else {
       fView->Clear();

@@ -11,6 +11,7 @@
 
 #include "TMath.h"
 #include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
 #include "lardata/DetectorInfoServices/DetectorClocksService.h"
 #include "lardata/DetectorInfoServices/DetectorPropertiesService.h"
 #include "lardata/Utilities/GeometryUtilities.h"
@@ -93,10 +94,11 @@ namespace evd {
   {
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
     art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
     auto const clockData = art::ServiceHandle<detinfo::DetectorClocksService const>()->DataFor(evt);
     auto const detProp =
       art::ServiceHandle<detinfo::DetectorPropertiesService const>()->DataFor(evt, clockData);
-    util::GeometryUtilities const gser{*geo, clockData, detProp};
+    util::GeometryUtilities const gser{*geo, wireReadoutGeom, clockData, detProp};
     std::vector<art::Ptr<recob::Hit>> hits_to_save;
 
     art::Handle<std::vector<recob::Hit>> HitListHandle;
@@ -185,10 +187,11 @@ namespace evd {
   {
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
     art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
     auto const clockData = art::ServiceHandle<detinfo::DetectorClocksService const>()->DataFor(evt);
     auto const detProp =
       art::ServiceHandle<detinfo::DetectorPropertiesService const>()->DataFor(evt, clockData);
-    util::GeometryUtilities const gser{*geo, clockData, detProp};
+    util::GeometryUtilities const gser{*geo, wireReadoutGeom, clockData, detProp};
 
     //get hits from info transfer, see if our selected hit is in it
     std::vector<art::Ptr<recob::Hit>> hits_saved;

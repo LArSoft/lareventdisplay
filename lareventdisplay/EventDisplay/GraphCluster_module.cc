@@ -19,9 +19,7 @@ namespace art {
   class ServiceHandle;
 }
 
-namespace fhicl {
-  class ParameterSet;
-}
+#include "fhiclcpp/fwd.h"
 
 namespace recob {
   class Hit;
@@ -31,7 +29,7 @@ namespace recob {
 #include "art/Framework/Services/Registry/ServiceHandle.h"
 #include "canvas/Persistency/Common/Ptr.h"
 #include "canvas/Persistency/Common/PtrVector.h"
-#include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
 #include "lardataalg/Utilities/StatCollector.h"
 #endif
 
@@ -60,10 +58,6 @@ namespace recob {
 
 namespace util {
   class PxPoint;
-}
-
-namespace geo {
-  class Geometry;
 }
 
 namespace evd {
@@ -103,13 +97,12 @@ namespace evd {
   GraphCluster::GraphCluster(fhicl::ParameterSet const& pset)
     : EDProducer{pset}, fGClAlg(pset.get<fhicl::ParameterSet>("GraphClusterAlg"))
   {
-    art::ServiceHandle<geo::Geometry const> geo;
-
     produces<std::vector<recob::Cluster>>();
     produces<art::Assns<recob::Cluster, recob::Hit>>();
     produces<std::vector<art::PtrVector<recob::Cluster>>>();
 
-    fNPlanes = geo->Nplanes();
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout>()->Get();
+    fNPlanes = wireReadoutGeom.Nplanes();
     starthit.resize(fNPlanes);
     endhit.resize(fNPlanes);
 
@@ -129,7 +122,7 @@ namespace evd {
     std::unique_ptr<std::vector<art::PtrVector<recob::Cluster>>> classn(
       new std::vector<art::PtrVector<recob::Cluster>>);
 
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout>()->Get();
 
     // check if evt and run numbers check out, etc...
     if (fGClAlg.CheckValidity(evt) == -1) { return; }
@@ -192,7 +185,7 @@ namespace evd {
                                0.,                 // multiple_hit_density
                                0.,                 // width
                                ip,
-                               geo->Plane({planeID.asTPCID(), ip}).View(),
+                               wireReadoutGeom.Plane({planeID.asTPCID(), ip}).View(),
                                planeID,
                                recob::Cluster::Sentry);
 

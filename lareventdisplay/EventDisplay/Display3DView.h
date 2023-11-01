@@ -14,13 +14,11 @@ namespace evd {
 
   /// View of event shoing the XZ and YZ readout planes
   class Display3DView : public evdb::Canvas {
-
   public:
     RQ_OBJECT("evd::Display3DView")
 
   public:
     Display3DView(TGMainFrame* mf);
-    ~Display3DView();
 
     const char* Description() const { return "3D Detector Display"; }
     const char* PrintTag() const { return "lar3d"; }

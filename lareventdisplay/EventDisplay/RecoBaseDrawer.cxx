@@ -20,6 +20,7 @@
 #include "TVector3.h"
 
 #include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
 #include "larcorealg/Geometry/CryostatGeo.h"
 #include "larcorealg/Geometry/Exceptions.h"
 #include "larcorealg/Geometry/PlaneGeo.h"
@@ -72,6 +73,8 @@ namespace {
   {
     mf::LogWarning("RecoBaseDrawer") << "RecoBaseDrawer::" << fcn << " failed with message:\n" << e;
   }
+
+  auto const& getWireReadoutGeom() { return art::ServiceHandle<geo::WireReadout const>()->Get(); }
 } // namespace
 
 namespace evd {
@@ -80,6 +83,7 @@ namespace evd {
   RecoBaseDrawer::RecoBaseDrawer()
   {
     art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = getWireReadoutGeom();
     art::ServiceHandle<evd::RawDrawingOptions const> rawOptions;
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOptions;
 
@@ -91,15 +95,15 @@ namespace evd {
     fConvertedCharge.resize(0);
 
     // set the list of channels in this detector
-    for (auto const& tpc : geo->Iterate<geo::TPCGeo>(geo::CryostatID{0})) {
-      unsigned int nplanes = tpc.Nplanes();
+    for (auto const& tpcid : geo->Iterate<geo::TPCID>(geo::CryostatID{0})) {
+      unsigned int nplanes = wireReadoutGeom.Nplanes(tpcid);
       fWireMin.resize(nplanes, -1);
       fWireMax.resize(nplanes, -1);
       fTimeMin.resize(nplanes, -1);
       fTimeMax.resize(nplanes, -1);
       fRawCharge.resize(nplanes, 0);
       fConvertedCharge.resize(nplanes, 0);
-      for (auto const& plane : geo->Iterate<geo::PlaneGeo>(tpc.ID())) {
+      for (auto const& plane : wireReadoutGeom.Iterate<geo::PlaneGeo>(tpcid)) {
         auto const p = plane.ID().Plane;
         fWireMin[p] = 0;
         fWireMax[p] = plane.Nwires();
@@ -115,14 +119,13 @@ namespace evd {
   }
 
   //......................................................................
-  RecoBaseDrawer::~RecoBaseDrawer() {}
+  RecoBaseDrawer::~RecoBaseDrawer() = default;
 
   //......................................................................
   void RecoBaseDrawer::Wire2D(const art::Event& evt, evdb::View2D* view, unsigned int plane)
   {
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
-    art::ServiceHandle<geo::Geometry const> geo;
     art::ServiceHandle<evd::ColorDrawingOptions const> cst;
 
     if (rawOpt->fDrawRawDataOrCalibWires < 1) return;
@@ -140,13 +143,14 @@ namespace evd {
 
     geo::PlaneID pid(rawOpt->fCryostat, rawOpt->fTPC, plane);
 
+    auto const& wireReadoutGeom = getWireReadoutGeom();
     for (size_t imod = 0; imod < recoOpt->fWireLabels.size(); ++imod) {
       art::InputTag const which = recoOpt->fWireLabels[imod];
 
       art::PtrVector<recob::Wire> wires;
-      this->GetWires(evt, which, wires);
+      GetWires(evt, which, wires);
 
-      if (wires.size() < 1) continue;
+      if (wires.empty()) continue;
 
       for (size_t i = 0; i < wires.size(); ++i) {
 
@@ -154,9 +158,9 @@ namespace evd {
 
         if (!rawOpt->fSeeBadChannels && channelStatus.IsBad(channel)) continue;
 
-        std::vector<geo::WireID> wireids = geo->ChannelToWire(channel);
+        std::vector<geo::WireID> wireids = wireReadoutGeom.ChannelToWire(channel);
 
-        geo::SigType_t sigType = geo->SignalType(channel);
+        geo::SigType_t sigType = wireReadoutGeom.SignalType(channel);
 
         for (auto const& wid : wireids) {
           if (wid.planeID() != pid) continue;
@@ -232,9 +236,9 @@ namespace evd {
     double startTick(50.);
     double endTick((rawOpt->fTicks - 50.) * ticksPerPoint);
 
-    for (size_t wireNo = 0; wireNo < geo->Nwires(pid); wireNo++) {
-      raw::ChannelID_t channel =
-        geo->PlaneWireToChannel(geo::WireID(rawOpt->fCryostat, rawOpt->fTPC, plane, wireNo));
+    for (size_t wireNo = 0; wireNo < wireReadoutGeom.Nwires(pid); wireNo++) {
+      raw::ChannelID_t channel = wireReadoutGeom.PlaneWireToChannel(
+        geo::WireID(rawOpt->fCryostat, rawOpt->fTPC, plane, wireNo));
 
       if (!rawOpt->fSeeBadChannels && channelStatus.IsBad(channel)) {
         double wire = 1. * wireNo;
@@ -261,7 +265,6 @@ namespace evd {
   {
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
-    art::ServiceHandle<geo::Geometry const> geo;
 
     int nHitsDrawn(0);
 
@@ -271,11 +274,12 @@ namespace evd {
     fRawCharge[plane] = 0;
     fConvertedCharge[plane] = 0;
 
+    auto const wire_pitch = getWireReadoutGeom().Plane({0, 0, 0}).WirePitch();
     for (size_t imod = 0; imod < recoOpt->fHitLabels.size(); ++imod) {
       art::InputTag const which = recoOpt->fHitLabels[imod];
 
       std::vector<const recob::Hit*> hits;
-      this->GetHits(evt, which, hits, plane);
+      GetHits(evt, which, hits, plane);
 
       // Display all hits on the two 2D views provided
       for (auto itr : hits) {
@@ -286,11 +290,11 @@ namespace evd {
         // Try to get the "best" charge measurement, ie. the one last in
         // the calibration chain
         fRawCharge[itr->WireID().Plane] += itr->PeakAmplitude();
-        double dQdX = itr->PeakAmplitude() / geo->WirePitch() / detProp.ElectronsToADC();
+        double dQdX = itr->PeakAmplitude() / wire_pitch / detProp.ElectronsToADC();
         fConvertedCharge[itr->WireID().Plane] += detProp.BirksCorrection(dQdX);
       } // loop on hits
 
-      nHitsDrawn = this->Hit2D(hits, kBlack, view, recoOpt->fDrawAllWireIDs);
+      nHitsDrawn = Hit2D(hits, kBlack, view, recoOpt->fDrawAllWireIDs);
 
     } // loop on imod folders
 
@@ -315,7 +319,7 @@ namespace evd {
   {
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = getWireReadoutGeom();
 
     unsigned int w = 0;
     unsigned int wold = 0;
@@ -333,7 +337,7 @@ namespace evd {
       std::vector<geo::WireID> wireIDs;
 
       if (allWireIDs)
-        wireIDs = geo->ChannelToWire(hit->Channel());
+        wireIDs = wireReadoutGeom.ChannelToWire(hit->Channel());
       else
         wireIDs.push_back(hit->WireID());
 
@@ -465,7 +469,7 @@ namespace evd {
     int fTicks = rawOpt->fTicks;
 
     geo::PlaneID const planeid(0, 0, plane);
-    maxw = (maxw + 10 > (int)geo->Nwires(planeid)) ? geo->Nwires(planeid) : maxw + 10;
+    maxw = std::min(maxw + 10, (int)getWireReadoutGeom().Nwires(planeid));
     maxt = (maxt + 10 > fTicks) ? fTicks : maxt + 10;
 
     return 0;
@@ -485,19 +489,18 @@ namespace evd {
   {
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
-    art::ServiceHandle<geo::Geometry const> geo;
 
     if (rawOpt->fDrawRawDataOrCalibWires < 1) return;
     if (recoOpt->fDraw2DEndPoints == 0) return;
 
     geo::PlaneID const planeid{0, rawOpt->fTPC, plane};
-    geo::View_t gview = geo->Plane(planeid).View();
+    geo::View_t gview = getWireReadoutGeom().Plane(planeid).View();
 
     for (size_t imod = 0; imod < recoOpt->fEndPoint2DLabels.size(); ++imod) {
       art::InputTag const which = recoOpt->fEndPoint2DLabels[imod];
 
       art::PtrVector<recob::EndPoint2D> ep2d;
-      this->GetEndPoint2D(evt, which, ep2d);
+      GetEndPoint2D(evt, which, ep2d);
 
       for (size_t iep = 0; iep < ep2d.size(); ++iep) {
         // only worry about end points with the correct view
@@ -548,14 +551,14 @@ namespace evd {
     if (rawOpt->fDrawRawDataOrCalibWires < 1) return;
     if (recoOpt->fDrawOpFlashes == 0) return;
 
-    art::ServiceHandle<geo::Geometry const> geo;
     geo::PlaneID pid(rawOpt->fCryostat, rawOpt->fTPC, plane);
+    auto const& planeg = getWireReadoutGeom().Plane(pid);
 
     for (size_t imod = 0; imod < recoOpt->fOpFlashLabels.size(); ++imod) {
       const art::InputTag which = recoOpt->fOpFlashLabels[imod];
 
       art::PtrVector<recob::OpFlash> opflashes;
-      this->GetOpFlashes(evt, which, opflashes);
+      GetOpFlashes(evt, which, opflashes);
 
       if (opflashes.size() < 1) continue;
 
@@ -597,7 +600,7 @@ namespace evd {
         for (size_t i = 0; i < points.size(); ++i) {
           geo::WireID wireID;
           try {
-            wireID = geo->NearestWireID(points[i], pid);
+            wireID = planeg.NearestWireID(points[i]);
           }
           catch (geo::InvalidWireError const& e) {
             wireID = e.suggestedWireID(); // pick the closest valid wire
@@ -619,8 +622,6 @@ namespace evd {
         }
       } // loop on opflashes
     }   // loop on imod folders
-
-    return;
   }
 
   //......................................................................
@@ -631,16 +632,18 @@ namespace evd {
   {
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
-    art::ServiceHandle<geo::Geometry const> geo;
 
     if (rawOpt->fDrawRawDataOrCalibWires < 1) return;
     if (recoOpt->fDrawSeeds == 0) return;
+
+    geo::PlaneID const planeID{rawOpt->fCryostat, rawOpt->fTPC, plane};
+    auto const& planeg = getWireReadoutGeom().Plane(planeID);
 
     for (size_t imod = 0; imod < recoOpt->fSeedLabels.size(); ++imod) {
       art::InputTag const which = recoOpt->fSeedLabels[imod];
 
       art::PtrVector<recob::Seed> seeds;
-      this->GetSeeds(evt, which, seeds);
+      GetSeeds(evt, which, seeds);
 
       if (seeds.size() < 1) continue;
 
@@ -671,39 +674,38 @@ namespace evd {
         unsigned int wireend1 = 0;
         unsigned int wireend2 = 0;
         using geo::vect::toPoint;
-        geo::PlaneID const& planeID{rawOpt->fCryostat, rawOpt->fTPC, plane};
         try {
-          wirepoint = geo->NearestWireID(toPoint(SeedPoint), planeID).Wire;
+          wirepoint = planeg.NearestWireID(toPoint(SeedPoint)).Wire;
         }
         catch (cet::exception& e) {
           wirepoint = atoi(e.explain_self().substr(e.explain_self().find("#") + 1, 5).c_str());
         }
         try {
-          wireend1 = geo->NearestWireID(toPoint(SeedEnd1), planeID).Wire;
+          wireend1 = planeg.NearestWireID(toPoint(SeedEnd1)).Wire;
         }
         catch (cet::exception& e) {
           wireend1 = atoi(e.explain_self().substr(e.explain_self().find("#") + 1, 5).c_str());
         }
         try {
-          wireend2 = geo->NearestWireID(toPoint(SeedEnd2), planeID).Wire;
+          wireend2 = planeg.NearestWireID(toPoint(SeedEnd2)).Wire;
         }
         catch (cet::exception& e) {
           wireend2 = atoi(e.explain_self().substr(e.explain_self().find("#") + 1, 5).c_str());
         }
 
         double x = wirepoint;
-        double y = detProp.ConvertXToTicks(SeedPoint[0], plane, rawOpt->fTPC, rawOpt->fCryostat);
+        double y = detProp.ConvertXToTicks(SeedPoint[0], planeID);
         double x1 = wireend1;
-        double y1 = detProp.ConvertXToTicks(SeedEnd1[0], plane, rawOpt->fTPC, rawOpt->fCryostat);
+        double y1 = detProp.ConvertXToTicks(SeedEnd1[0], planeID);
         double x2 = wireend2;
-        double y2 = detProp.ConvertXToTicks(SeedEnd2[0], plane, rawOpt->fTPC, rawOpt->fCryostat);
+        double y2 = detProp.ConvertXToTicks(SeedEnd2[0], planeID);
 
         if (rawOpt->fAxisOrientation > 0) {
-          x = detProp.ConvertXToTicks(SeedPoint[0], plane, rawOpt->fTPC, rawOpt->fCryostat);
+          x = detProp.ConvertXToTicks(SeedPoint[0], planeID);
           y = wirepoint;
-          x1 = detProp.ConvertXToTicks(SeedEnd1[0], plane, rawOpt->fTPC, rawOpt->fCryostat);
+          x1 = detProp.ConvertXToTicks(SeedEnd1[0], planeID);
           y1 = wireend1;
-          x2 = detProp.ConvertXToTicks(SeedEnd2[0], plane, rawOpt->fTPC, rawOpt->fCryostat);
+          x2 = detProp.ConvertXToTicks(SeedEnd2[0], planeID);
           y2 = wireend2;
         }
 
@@ -714,8 +716,6 @@ namespace evd {
         line.SetLineWidth(2.0);
       } // loop on seeds
     }   // loop on imod folders
-
-    return;
   }
 
   //......................................................................
@@ -730,8 +730,6 @@ namespace evd {
     if (rawOpt->fDrawRawDataOrCalibWires < 1) return;
     if (recoOpt->fDrawSlices == 0) return;
 
-    art::ServiceHandle<geo::Geometry const> geo;
-
     static bool first = true;
     if (first) {
       std::cout
@@ -744,11 +742,12 @@ namespace evd {
     unsigned int c = rawOpt->fCryostat;
     unsigned int t = rawOpt->fTPC;
     geo::PlaneID planeID(c, t, plane);
+    auto const& planeg = getWireReadoutGeom().Plane(planeID);
 
     for (size_t imod = 0; imod < recoOpt->fSliceLabels.size(); ++imod) {
       art::InputTag const which = recoOpt->fSliceLabels[imod];
       art::PtrVector<recob::Slice> slices;
-      this->GetSlices(evt, which, slices);
+      GetSlices(evt, which, slices);
       if (slices.size() < 1) continue;
       art::FindMany<recob::Hit> fmh(slices, evt, which);
       for (size_t isl = 0; isl < slices.size(); ++isl) {
@@ -761,12 +760,12 @@ namespace evd {
           for (auto hit : hits) {
             if (hit->WireID().Plane == plane) { hits_on_plane.push_back(hit); }
           }
-          if (this->Hit2D(hits_on_plane, color, view, false, false) < 1) continue;
+          if (Hit2D(hits_on_plane, color, view, false, false) < 1) continue;
           if (recoOpt->fDrawSlices == 2) {
             geo::Point_t slicePos(
               slices[isl]->Center().X(), slices[isl]->Center().Y(), slices[isl]->Center().Z());
             double tick = detProp.ConvertXToTicks(slices[isl]->Center().X(), planeID);
-            double wire = geo->WireCoordinate(slicePos, planeID);
+            double wire = planeg.WireCoordinate(slicePos);
             std::string s = std::to_string(slcID);
             char const* txt = s.c_str();
             TText& slcID = view->AddText(wire, tick, txt);
@@ -779,7 +778,7 @@ namespace evd {
           geo::Point_t slicePos(
             slices[isl]->Center().X(), slices[isl]->Center().Y(), slices[isl]->Center().Z());
           double tick = detProp.ConvertXToTicks(slices[isl]->Center().X(), planeID);
-          double wire = geo->WireCoordinate(slicePos, planeID);
+          double wire = planeg.WireCoordinate(slicePos);
           float markerSize = 1;
           if (slices[isl]->AspectRatio() > 0) {
             markerSize = 1 / slices[isl]->AspectRatio();
@@ -792,23 +791,22 @@ namespace evd {
           geo::Point_t slicePos0(
             slices[isl]->End0Pos().X(), slices[isl]->End0Pos().Y(), slices[isl]->End0Pos().Z());
           tick = detProp.ConvertXToTicks(slices[isl]->End0Pos().X(), planeID);
-          wire = geo->WireCoordinate(slicePos0, planeID);
+          wire = planeg.WireCoordinate(slicePos0);
           TMarker& end0 = view->AddMarker(wire, tick, color, 20, 1.0);
           end0.SetMarkerColor(color);
           pline.SetPoint(0, wire, tick);
           geo::Point_t slicePos1(
             slices[isl]->End1Pos().X(), slices[isl]->End1Pos().Y(), slices[isl]->End1Pos().Z());
           tick = detProp.ConvertXToTicks(slices[isl]->End1Pos().X(), plane, t, c);
-          wire = geo->WireCoordinate(slicePos1, planeID);
+          wire = planeg.WireCoordinate(slicePos1);
           TMarker& end1 = view->AddMarker(wire, tick, color, 20, 1.0);
           end1.SetMarkerColor(color);
           pline.SetPoint(1, wire, tick);
         }
       } // isl
+    }   // imod
+  }     // Slice2D
 
-    } // imod
-
-  } // Slice2D
   //......................................................................
   void RecoBaseDrawer::Cluster2D(const art::Event& evt,
                                  detinfo::DetectorClocksData const& clockData,
@@ -818,17 +816,14 @@ namespace evd {
   {
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
-    art::ServiceHandle<geo::Geometry const> geo;
 
     if (rawOpt->fDrawRawDataOrCalibWires < 1) return;
     if (recoOpt->fDrawClusters == 0) return;
 
     geo::PlaneID const planeid{0, rawOpt->fTPC, plane};
-    geo::View_t gview = geo->Plane(planeid).View();
+    auto const& planeg = getWireReadoutGeom().Plane(planeid);
 
     // if user sets "DrawClusters" to 2, draw the clusters differently:
-    //    bool drawAsMarkers = (recoOpt->fDrawClusters == 1 ||
-    //                          recoOpt->fDrawClusters == 3);
     bool drawAsMarkers = recoOpt->fDrawClusters != 2;
 
     // draw connecting lines between cluster hits?
@@ -849,7 +844,7 @@ namespace evd {
       art::InputTag const which = recoOpt->fClusterLabels[imod];
 
       art::PtrVector<recob::Cluster> clust;
-      this->GetClusters(evt, which, clust);
+      GetClusters(evt, which, clust);
 
       if (clust.size() < 1) continue;
 
@@ -858,7 +853,7 @@ namespace evd {
       // hits (since spacepoints could be made from a used 2D hit but then not used themselves)
       // Get the space points created by the PFParticle producer
       std::vector<art::Ptr<recob::SpacePoint>> spacePointVec;
-      this->GetSpacePoints(evt, which, spacePointVec);
+      GetSpacePoints(evt, which, spacePointVec);
 
       // No space points no continue
       if (spacePointVec.size() > 0) {
@@ -885,7 +880,7 @@ namespace evd {
           }
 
           // Draw the free hits in gray
-          this->Hit2D(freeHitVec, kGray, view, false, false, false);
+          Hit2D(freeHitVec, kGray, view, false, false, false);
         }
       }
 
@@ -894,8 +889,6 @@ namespace evd {
       art::FindManyP<recob::PFParticle> fmc(clust, evt, which);
 
       for (size_t ic = 0; ic < clust.size(); ++ic) {
-        // only worry about clusters with the correct view
-        //            if(clust[ic]->View() != gview) continue;
         if (clust[ic]->Plane().Plane != plane) continue;
 
         // see if we can set the color index in a sensible fashion
@@ -918,10 +911,7 @@ namespace evd {
               art::FindManyP<anab::CosmicTag> fmct(pfplist, evt, which);
               if (fmct.isValid()) {
                 std::vector<art::Ptr<anab::CosmicTag>> ctlist = fmct.at(0);
-                if (!ctlist.empty()) {
-                  //std::cout<<"cosmic tag "<<ctlist[0]->CosmicScore()<<std::endl;
-                  cosmicscore = ctlist[0]->CosmicScore();
-                }
+                if (!ctlist.empty()) { cosmicscore = ctlist[0]->CosmicScore(); }
               }
             }
           } // pfplist is not empty
@@ -936,17 +926,12 @@ namespace evd {
 
           // If there are no hits in this cryostat/TPC then we skip the rest
           // That no hits were drawn is the sign for this
-          if (this->Hit2D(hits, color, view, false, drawConnectingLines) < 1) continue;
+          if (Hit2D(hits, color, view, false, drawConnectingLines) < 1) continue;
 
-          if (recoOpt->fDrawCosmicTags && cosmicscore != FLT_MIN)
-            this->Hit2D(hits, view, cosmicscore);
+          if (recoOpt->fDrawCosmicTags && cosmicscore != FLT_MIN) Hit2D(hits, view, cosmicscore);
 
           if (recoOpt->fDrawClusters > 3) {
-            // BB: draw the cluster ID
-            //std::string s = std::to_string(clusterIdx);
-            // TY: change to draw cluster id instead of index
-            //                std::string s = std::to_string(clusterIdx) + "," + std::to_string(clust[ic]->ID());
-            // BB: Put a T in front to denote a trajectory ID
+            // Put a T in front to denote a trajectory ID
             std::string s = "T" + std::to_string(clust[ic]->ID());
             // append the PFP index + 1 (sort of the ID)
             if (pfpIndex != INT_MAX) s = s + " P" + std::to_string(pfpIndex + 1);
@@ -966,7 +951,7 @@ namespace evd {
           // default "outline" method:
           std::vector<double> tpts, wpts;
 
-          this->GetClusterOutlines(hits, tpts, wpts, plane);
+          GetClusterOutlines(hits, tpts, wpts, plane);
 
           int lcolor = 9; // line color
           int fcolor = 9; // fill color
@@ -994,8 +979,7 @@ namespace evd {
         // draw the direction cosine of the cluster as well as it's starting point
         // (average of the start and end angle -- by default they are the same value)
         // thetawire is the angle measured CW from +z axis to wire
-        //double thetawire = geo->TPC(t).Plane(plane).Wire(0).ThetaZ();
-        double wirePitch = geo->WirePitch(gview);
+        double wirePitch = planeg.WirePitch();
         double driftvelocity = detProp.DriftVelocity();    // cm/us
         double timetick = sampling_rate(clockData) * 1e-3; // time sample in us
         // rotate coord system CCW around x-axis by pi-thetawire
@@ -1004,21 +988,17 @@ namespace evd {
         //   increasing wire number
         //use yprime-component of dir cos in rotated coord sys to get
         //   dTdW (number of time ticks per unit of wire pitch)
-        //double rotang = 3.1416-thetawire;
-        this->Draw2DSlopeEndPoints(
-          clust[ic]->StartWire(),
-          clust[ic]->StartTick(),
-          clust[ic]->EndWire(),
-          clust[ic]->EndTick(),
-          std::tan((clust[ic]->StartAngle() + clust[ic]->EndAngle()) / 2.) * wirePitch /
-            driftvelocity / timetick,
-          evd::kColor[colorIdx],
-          view);
+        Draw2DSlopeEndPoints(clust[ic]->StartWire(),
+                             clust[ic]->StartTick(),
+                             clust[ic]->EndWire(),
+                             clust[ic]->EndTick(),
+                             std::tan((clust[ic]->StartAngle() + clust[ic]->EndAngle()) / 2.) *
+                               wirePitch / driftvelocity / timetick,
+                             evd::kColor[colorIdx],
+                             view);
 
       } // loop on ic clusters
     }   // loop on imod folders
-
-    return;
   }
 
   //......................................................................
@@ -1058,13 +1038,10 @@ namespace evd {
     TMarker& strt = view->AddMarker(xm, ym, color, kFullCircle, 1.0);
     strt.SetMarkerColor(color); // stupid line to shut up compiler warning
 
-    //    double stublen = 50.0 ;
     double stublen = 2. * deltaX;
     TLine& l = view->AddLine(x1, y1, x1 + stublen, y1 + slope1 * stublen);
     l.SetLineColor(color);
     l.SetLineWidth(1); //2);
-
-    return;
   }
 
   //......................................................................
@@ -1096,14 +1073,11 @@ namespace evd {
     TMarker& strt = view->AddMarker(x1, y1, color, kFullStar, 2.0);
     strt.SetMarkerColor(color); // stupid line to shut up compiler warning
 
-    //    double stublen = 50.0 ;
     double stublen = 300.0;
     TLine& l = view->AddLine(x1, y1, x1 + stublen, y1 + slope1 * stublen);
     l.SetLineColor(color);
     l.SetLineWidth(2);
     l.SetLineStyle(2);
-
-    return;
   }
 
   //......................................................................
@@ -1135,14 +1109,11 @@ namespace evd {
     TMarker& strt = view->AddMarker(x1, y1, color, kFullStar, 2.0);
     strt.SetMarkerColor(color); // stupid line to shut up compiler warning
 
-    //    double stublen = 50.0 ;
     double stublen = 300.0;
     TLine& l = view->AddLine(x1, y1, x1 + stublen * cosx1, y1 + stublen * cosy1);
     l.SetLineColor(color);
     l.SetLineWidth(2);
     l.SetLineStyle(2);
-
-    return;
   }
 
   //......................................................................
@@ -1231,12 +1202,12 @@ namespace evd {
   {
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
-    art::ServiceHandle<geo::Geometry const> geo;
 
     unsigned int c = rawOpt->fCryostat;
     unsigned int t = rawOpt->fTPC;
-    geo::PlaneID planeID(c, t, plane);
+    geo::PlaneID const planeID(c, t, plane);
     geo::Point_t localPos(startPos.X(), startPos.Y(), startPos.Z());
+    auto const& planeg = getWireReadoutGeom().Plane(planeID);
 
     int color(evd::kColor2[id % evd::kNCOLS]);
     int lineWidth(1);
@@ -1252,28 +1223,28 @@ namespace evd {
 
     // first draw the hits
     if (cscore < -1000) { //shower
-      this->Hit2D(hits, color, view, false, false, lineWidth);
+      Hit2D(hits, color, view, false, false, lineWidth);
       if (recoOpt->fDrawShowers >= 1) {
         //draw the shower ID at the beginning of shower
         std::string s = std::to_string(id);
         char const* txt = s.c_str();
         double tick = 30 + detProp.ConvertXToTicks(startPos.X(), planeID);
-        double wire = geo->WireCoordinate(localPos, planeID);
+        double wire = planeg.WireCoordinate(localPos);
         TText& shwID = view->AddText(wire, tick, txt);
         shwID.SetTextColor(evd::kColor2[id % evd::kNCOLS]);
         shwID.SetTextSize(0.1);
       }
     }
     else
-      this->Hit2D(hits, color, view, false, false, lineWidth);
+      Hit2D(hits, color, view, false, false, lineWidth);
 
     double tick0 = detProp.ConvertXToTicks(startPos.X(), planeID);
-    double wire0 = geo->WireCoordinate(localPos, planeID);
+    double wire0 = planeg.WireCoordinate(localPos);
 
     localPos = geo::Point_t(startPos + startDir); // Huh? what is this?
 
     double tick1 = detProp.ConvertXToTicks((startPos + startDir).X(), planeID);
-    double wire1 = geo->WireCoordinate(localPos, planeID);
+    double wire1 = planeg.WireCoordinate(localPos);
     double cost = 0;
     double cosw = 0;
     double ds = sqrt(pow(tick0 - tick1, 2) + pow(wire0 - wire1, 2));
@@ -1283,9 +1254,7 @@ namespace evd {
       cosw = (wire1 - wire0) / ds;
     }
 
-    this->Draw2DSlopeEndPoints(wire0, tick0, cosw, cost, evd::kColor[id % evd::kNCOLS], view);
-
-    return;
+    Draw2DSlopeEndPoints(wire0, tick0, cosw, cost, evd::kColor[id % evd::kNCOLS], view);
   }
 
   //......................................................................
@@ -1302,16 +1271,17 @@ namespace evd {
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
     art::ServiceHandle<geo::Geometry const> geo;
     geo::PlaneID const planeID{rawOpt->fCryostat, rawOpt->fTPC, plane};
+    auto const& planeg = getWireReadoutGeom().Plane(planeID);
 
     // first draw the hits
-    this->Hit2D(hits, color, view, false, true, lineWidth);
+    Hit2D(hits, color, view, false, true, lineWidth);
 
     const auto& startPos = track->Vertex();
     const auto& startDir = track->VertexDirection();
 
     // prepare to draw prongs
     geo::PlaneGeo::LocalPoint_t const local{};
-    auto world = geo->Plane(planeID).toWorldCoords(local);
+    auto world = planeg.toWorldCoords(local);
     world.SetY(startPos.Y());
     world.SetZ(startPos.Z());
 
@@ -1319,15 +1289,15 @@ namespace evd {
     double tick = detProp.ConvertXToTicks(startPos.X(), planeID);
     double wire = 0.;
     try {
-      wire = 1. * geo->NearestWireID(world, planeID).Wire;
+      wire = 1. * planeg.NearestWireID(world).Wire;
     }
     catch (cet::exception& e) {
       wire = 1. * atoi(e.explain_self().substr(e.explain_self().find("#") + 1, 5).c_str());
     }
 
     // thetawire is the angle measured CW from +z axis to wire
-    double thetawire = geo->Plane(planeID).Wire(0).ThetaZ();
-    double wirePitch = geo->WirePitch(hits[0]->View());
+    double thetawire = planeg.Wire(0).ThetaZ();
+    double wirePitch = planeg.WirePitch();
     double driftvelocity = detProp.DriftVelocity();    // cm/us
     double timetick = sampling_rate(clockData) * 1e-3; // time sample in us
     // rotate coord system CCW around x-axis by pi-thetawire
@@ -1340,11 +1310,10 @@ namespace evd {
     double yprime = std::cos(rotang) * startDir.Y() + std::sin(rotang) * startDir.Z();
     double dTdW = startDir.X() * wirePitch / driftvelocity / timetick / yprime;
 
-    this->Draw2DSlopeEndPoints(wire, tick, dTdW, color, view);
+    Draw2DSlopeEndPoints(wire, tick, dTdW, color, view);
 
     // Draw a line to the hit positions, starting from the vertex
     size_t nTrackHits = track->NumberTrajectoryPoints();
-    //TPolyLine& pl         = view->AddPolyLine(track->CountValidPoints(),1,1,0); //kColor[id%evd::kNCOLS],1,0);
     TPolyLine& pl = view->AddPolyLine(0, 1, 1, 0); //kColor[id%evd::kNCOLS],1,0);
 
     size_t vidx = 0;
@@ -1360,7 +1329,7 @@ namespace evd {
       double tickHit = detProp.ConvertXToTicks(hitPos.X(), planeID);
       double wireHit = 0.;
       try {
-        wireHit = 1. * geo->NearestWireID(world, planeID).Wire;
+        wireHit = 1. * planeg.NearestWireID(world).Wire;
       }
       catch (cet::exception& e) {
         wireHit = 1. * atoi(e.explain_self().substr(e.explain_self().find("#") + 1, 5).c_str());
@@ -1370,9 +1339,6 @@ namespace evd {
         pl.SetPoint(vidx++, wireHit, tickHit);
       }
     }
-    //pl.SetPolyLine(vidx);
-
-    return;
   }
 
   //......................................................................
@@ -1384,12 +1350,12 @@ namespace evd {
   {
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
-    art::ServiceHandle<geo::Geometry const> geo;
 
     if (rawOpt->fDrawRawDataOrCalibWires < 1) return;
 
     geo::PlaneID const planeID{rawOpt->fCryostat, rawOpt->fTPC, plane};
-    geo::View_t gview = geo->Plane(planeID).View();
+    auto const& planeg = getWireReadoutGeom().Plane(planeID);
+    geo::View_t gview = planeg.View();
 
     // annoying for now, but have to have multiple copies of basically the
     // same code to draw prongs, showers and tracks so that we can use
@@ -1402,7 +1368,7 @@ namespace evd {
         art::InputTag const which = recoOpt->fTrackLabels[imod];
 
         art::View<recob::Track> track;
-        this->GetTracks(evt, which, track);
+        GetTracks(evt, which, track);
 
         if (track.vals().size() < 1) continue;
 
@@ -1429,7 +1395,7 @@ namespace evd {
                                   track.vals().at(t)->End().Y(),
                                   track.vals().at(t)->End().Z());
             double tick = 30 + detProp.ConvertXToTicks(trackPos.X(), planeID);
-            double wire = geo->WireCoordinate(trackPos, planeID);
+            double wire = planeg.WireCoordinate(trackPos);
             tid =
               track.vals().at(t)->ID() &
               65535; //this is a hack for PMA track id which uses the 16th bit to identify shower-like track.;
@@ -1481,7 +1447,7 @@ namespace evd {
             lineWidth = 3;
           }
 
-          this->DrawTrack2D(clockData, detProp, hits, view, plane, aTrack, color, lineWidth);
+          DrawTrack2D(clockData, detProp, hits, view, plane, aTrack, color, lineWidth);
         } // end loop over prongs
       }   // end loop over labels
     }     // end draw tracks
@@ -1503,7 +1469,7 @@ namespace evd {
         art::InputTag const which = recoOpt->fShowerLabels[imod];
 
         art::View<recob::Shower> shower;
-        this->GetShowers(evt, which, shower);
+        GetShowers(evt, which, shower);
         if (shower.vals().size() < 1) continue;
 
         art::FindMany<recob::Hit> fmh(shower, evt, which);
@@ -1538,14 +1504,13 @@ namespace evd {
             geo::Point_t localStart(startPos);
             geo::Point_t localEnd(endPos);
 
-            double swire = geo->WireCoordinate(localStart, planeID);
+            double swire = planeg.WireCoordinate(localStart);
             double stick = detProp.ConvertXToTicks(startPos.X(), planeID);
-            double ewire = geo->WireCoordinate(localEnd, planeID);
+            double ewire = planeg.WireCoordinate(localEnd);
             double etick = detProp.ConvertXToTicks(endPos.X(), planeID);
             TLine& coneLine = view->AddLine(swire, stick, ewire, etick);
             // color coding by dE/dx
             std::vector<double> dedxVec = shower.vals().at(s)->dEdx();
-            //                      float dEdx = shower.vals().at(s)->dEdx()[plane];
             // use black for too-low dE/dx
             int color = kBlack;
             if (plane < dedxVec.size()) {
@@ -1571,26 +1536,23 @@ namespace evd {
             // project these points into the plane
             for (unsigned short ipt = 0; ipt < coneRim.size(); ++ipt) {
               geo::Point_t localPos(coneRim[ipt][0], coneRim[ipt][1], coneRim[ipt][2]);
-
-              double wire = geo->WireCoordinate(localPos, planeID);
+              double wire = planeg.WireCoordinate(localPos);
               double tick = detProp.ConvertXToTicks(coneRim[ipt][0], planeID);
               pline.SetPoint(ipt, wire, tick);
             } // ipt
           }
-          this->DrawProng2D(detProp,
-                            hits,
-                            view,
-                            plane,
-                            shower.vals().at(s)->ShowerStart(),
-                            shower.vals().at(s)->Direction(),
-                            s,
-                            -10001); //use -10001 to increase shower hit size
+          DrawProng2D(detProp,
+                      hits,
+                      view,
+                      plane,
+                      shower.vals().at(s)->ShowerStart(),
+                      shower.vals().at(s)->Direction(),
+                      s,
+                      -10001); //use -10001 to increase shower hit size
 
         } // end loop over prongs
       }   // end loop over labels
     }     // end draw showers
-
-    return;
   }
 
   //......................................................................
@@ -1604,10 +1566,10 @@ namespace evd {
     if (!recoOpt->fDrawTrackVertexAssns) return;
 
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
-    art::ServiceHandle<geo::Geometry const> geo;
 
     geo::PlaneID const planeID{rawOpt->fCryostat, rawOpt->fTPC, plane};
-    geo::View_t gview = geo->Plane(planeID).View();
+    auto const& planeg = getWireReadoutGeom().Plane(planeID);
+    geo::View_t gview = planeg.View();
 
     // annoying for now, but have to have multiple copies of basically the
     // same code to draw prongs, showers and tracks so that we can use
@@ -1619,7 +1581,7 @@ namespace evd {
       art::InputTag const which = recoOpt->fTrkVtxTrackLabels[imod];
 
       art::View<recob::Track> trackCol;
-      this->GetTracks(evt, which, trackCol);
+      GetTracks(evt, which, trackCol);
 
       if (trackCol.vals().size() < 1) continue;
 
@@ -1663,7 +1625,7 @@ namespace evd {
 
           geo::Point_t localXYZ(xyz[0], xyz[1], xyz[2]);
 
-          double wire = geo->WireCoordinate(localXYZ, planeID);
+          double wire = planeg.WireCoordinate(localXYZ);
           double time = detProp.ConvertXToTicks(xyz[0], planeID);
 
           TMarker& strt = view->AddMarker(wire, time, color, 24, 3.0);
@@ -1680,7 +1642,7 @@ namespace evd {
         double x = track->End().X();
         geo::Point_t trackEnd(track->End());
         double tick = 30 + detProp.ConvertXToTicks(x, planeID);
-        double wire = geo->WireCoordinate(trackEnd, planeID);
+        double wire = planeg.WireCoordinate(trackEnd);
 
         tid = track->ID() & 65535;
 
@@ -1732,7 +1694,7 @@ namespace evd {
           lineWidth = 3;
         }
 
-        this->DrawTrack2D(clockData, detProp, hits, view, plane, track.get(), color, lineWidth);
+        DrawTrack2D(clockData, detProp, hits, view, plane, track.get(), color, lineWidth);
 
       } // end loop over vertex/track associations
 
@@ -1761,12 +1723,13 @@ namespace evd {
     }
 
     geo::PlaneID const planeID{rawOpt->fCryostat, rawOpt->fTPC, plane};
+    auto const& planeg = getWireReadoutGeom().Plane(planeID);
 
     for (size_t imod = 0; imod < recoOpt->fVertexLabels.size(); ++imod) {
       art::InputTag const which = recoOpt->fVertexLabels[imod];
 
       art::PtrVector<recob::Vertex> vertex;
-      this->GetVertices(evt, which, vertex);
+      GetVertices(evt, which, vertex);
 
       if (vertex.size() < 1) continue;
 
@@ -1791,7 +1754,7 @@ namespace evd {
         geo::Point_t localPos(xyz[0], xyz[1], xyz[2]);
 
         // BB: draw polymarker at the vertex position in this plane
-        double wire = geo->WireCoordinate(localPos, planeID);
+        double wire = planeg.WireCoordinate(localPos);
         double time = detProp.ConvertXToTicks(xyz[0], planeID);
         int color = evd::kColor[vertex[v]->ID() % evd::kNCOLS];
         TMarker& strt = view->AddMarker(wire, time, color, 24, 1.0);
@@ -1807,8 +1770,6 @@ namespace evd {
         }
       } // end loop over vertices to draw from this label
     }   // end loop over vertex module lables
-
-    return;
   }
 
   //......................................................................
@@ -1816,19 +1777,19 @@ namespace evd {
   {
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = getWireReadoutGeom();
 
     if (rawOpt->fDrawRawDataOrCalibWires < 1) return;
 
     if (recoOpt->fDrawEvents != 0) {
       geo::PlaneID const planeID{rawOpt->fCryostat, rawOpt->fTPC, plane};
-      geo::View_t gview = geo->Plane(planeID).View();
+      geo::View_t gview = wireReadoutGeom.Plane(planeID).View();
 
       for (unsigned int imod = 0; imod < recoOpt->fEventLabels.size(); ++imod) {
         art::InputTag const which = recoOpt->fEventLabels[imod];
 
         art::PtrVector<recob::Event> event;
-        this->GetEvents(evt, which, event);
+        GetEvents(evt, which, event);
 
         if (event.size() < 1) continue;
 
@@ -1848,7 +1809,7 @@ namespace evd {
               itr++;
           }
 
-          this->Hit2D(hits, evd::kColor[event[e]->ID() % evd::kNCOLS], view, false, true);
+          Hit2D(hits, evd::kColor[event[e]->ID() % evd::kNCOLS], view, false, true);
         } // end loop over events
       }   // end loop over event module lables
     }     // end if we are drawing events
@@ -1871,7 +1832,7 @@ namespace evd {
       art::InputTag const which = labels[imod];
 
       art::PtrVector<recob::Seed> seeds;
-      this->GetSeeds(evt, which, seeds);
+      GetSeeds(evt, which, seeds);
 
       int color = 0;
 
@@ -1916,7 +1877,7 @@ namespace evd {
       art::InputTag const which = labels[imod];
 
       art::PtrVector<recob::Seed> seeds;
-      this->GetSeeds(evt, which, seeds);
+      GetSeeds(evt, which, seeds);
 
       int color = 0;
 
@@ -1978,7 +1939,7 @@ namespace evd {
       art::InputTag const which = labels[imod];
 
       std::vector<art::Ptr<recob::SpacePoint>> spts;
-      this->GetSpacePoints(evt, which, spts);
+      GetSpacePoints(evt, which, spts);
       int color = 10 * imod + 11;
 
       color = 0;
@@ -2013,7 +1974,7 @@ namespace evd {
 
       // Start off by recovering our 3D Clusters for this label
       art::PtrVector<recob::PFParticle> pfParticleVec;
-      this->GetPFParticles(evt, which, pfParticleVec);
+      GetPFParticles(evt, which, pfParticleVec);
 
       mf::LogDebug("RecoBaseDrawer")
         << "RecoBaseDrawer: number PFParticles to draw: " << pfParticleVec.size() << std::endl;
@@ -2023,11 +1984,11 @@ namespace evd {
 
       // Get the space points created by the PFParticle producer
       std::vector<art::Ptr<recob::SpacePoint>> spacePointVec;
-      this->GetSpacePoints(evt, assns, spacePointVec);
+      GetSpacePoints(evt, assns, spacePointVec);
 
       // Recover the edges
       std::vector<art::Ptr<recob::Edge>> edgeVec;
-      if (recoOpt->fDrawEdges) this->GetEdges(evt, assns, edgeVec);
+      if (recoOpt->fDrawEdges) GetEdges(evt, assns, edgeVec);
 
       // No space points no continue
       if (spacePointVec.empty()) continue;
@@ -2437,7 +2398,7 @@ namespace evd {
 
       // Start off by recovering our 3D Clusters for this label
       std::vector<art::Ptr<recob::Edge>> edgeVec;
-      this->GetEdges(evt, which, edgeVec);
+      GetEdges(evt, which, edgeVec);
 
       mf::LogDebug("RecoBaseDrawer")
         << "RecoBaseDrawer: number Edges to draw: " << edgeVec.size() << std::endl;
@@ -2445,7 +2406,7 @@ namespace evd {
       if (!edgeVec.empty()) {
         // Get the space points created by the PFParticle producer
         std::vector<art::Ptr<recob::SpacePoint>> spacePointVec;
-        this->GetSpacePoints(evt, which, spacePointVec);
+        GetSpacePoints(evt, which, spacePointVec);
 
         // First draw the space points (all of them), then circle back on the edges...
         int colorIdx(41); //2);
@@ -2507,7 +2468,7 @@ namespace evd {
 
       // Start off by recovering our 3D Clusters for this label
       std::vector<art::Ptr<recob::SpacePoint>> spacePointVec;
-      this->GetSpacePoints(evt, which, spacePointVec);
+      GetSpacePoints(evt, which, spacePointVec);
 
       mf::LogDebug("RecoBaseDrawer")
         << "RecoBaseDrawer: number Extreme points to draw: " << spacePointVec.size() << std::endl;
@@ -2548,7 +2509,7 @@ namespace evd {
       for (size_t imod = 0; imod < recoOpt->fTrackLabels.size(); ++imod) {
         art::InputTag which = recoOpt->fTrackLabels[imod];
         art::View<recob::Track> trackView;
-        this->GetTracks(evt, which, trackView);
+        GetTracks(evt, which, trackView);
         if (!trackView.isValid())
           continue; //Prevent potential segmentation fault if no tracks found. aoliv23@lsu.edu
 
@@ -2595,7 +2556,7 @@ namespace evd {
       for (size_t imod = 0; imod < recoOpt->fShowerLabels.size(); ++imod) {
         art::InputTag which = recoOpt->fShowerLabels[imod];
         art::View<recob::Shower> shower;
-        this->GetShowers(evt, which, shower);
+        GetShowers(evt, which, shower);
 
         for (size_t s = 0; s < shower.vals().size(); ++s) {
           const recob::Shower* pshower = shower.vals().at(s);
@@ -2839,7 +2800,7 @@ namespace evd {
         art::InputTag const which = recoOpt->fVertexLabels[imod];
 
         art::PtrVector<recob::Vertex> vertex;
-        this->GetVertices(evt, which, vertex);
+        GetVertices(evt, which, vertex);
 
         art::FindManyP<recob::Track> fmt(vertex, evt, which);
         art::FindManyP<recob::Shower> fms(vertex, evt, which);
@@ -2851,14 +2812,14 @@ namespace evd {
 
             // grab the Prongs from the vertex and draw those
             for (size_t t = 0; t < tracks.size(); ++t)
-              this->DrawTrack3D(*(tracks[t]), view, vertex[v]->ID());
+              DrawTrack3D(*(tracks[t]), view, vertex[v]->ID());
           }
 
           if (fms.isValid()) {
             std::vector<art::Ptr<recob::Shower>> showers = fms.at(v);
 
             for (size_t s = 0; s < showers.size(); ++s)
-              this->DrawShower3D(*(showers[s]), vertex[v]->ID(), view);
+              DrawShower3D(*(showers[s]), vertex[v]->ID(), view);
           }
 
           double xyz[3] = {0.};
@@ -2887,7 +2848,7 @@ namespace evd {
         art::InputTag const which = recoOpt->fEventLabels[imod];
 
         art::PtrVector<recob::Event> event;
-        this->GetEvents(evt, which, event);
+        GetEvents(evt, which, event);
 
         if (event.size() < 1) continue;
 
@@ -2913,10 +2874,10 @@ namespace evd {
 
             // grab the Prongs from the vertex and draw those
             for (size_t t = 0; t < tracks.size(); ++t)
-              this->DrawTrack3D(*(tracks[t]), view, event[e]->ID());
+              DrawTrack3D(*(tracks[t]), view, event[e]->ID());
 
             for (size_t s = 0; s < showers.size(); ++s)
-              this->DrawShower3D(*(showers[s]), event[e]->ID(), view);
+              DrawShower3D(*(showers[s]), event[e]->ID(), view);
 
           } // end loop over vertices from this event
 
@@ -2946,7 +2907,7 @@ namespace evd {
     for (size_t imod = 0; imod < recoOpt->fSliceLabels.size(); ++imod) {
       art::InputTag const which = recoOpt->fSliceLabels[imod];
       art::PtrVector<recob::Slice> slices;
-      this->GetSlices(evt, which, slices);
+      GetSlices(evt, which, slices);
       if (slices.size() < 1) continue;
       art::FindManyP<recob::SpacePoint> fmsp(slices, evt, which);
       for (size_t isl = 0; isl < slices.size(); ++isl) {
@@ -2985,7 +2946,7 @@ namespace evd {
       const art::InputTag which = recoOpt->fOpFlashLabels[imod];
 
       art::PtrVector<recob::OpFlash> opflashes;
-      this->GetOpFlashes(evt, which, opflashes);
+      GetOpFlashes(evt, which, opflashes);
 
       if (opflashes.size() < 1) continue;
 
@@ -3071,14 +3032,14 @@ namespace evd {
       art::InputTag const which = recoOpt->fVertexLabels[imod];
 
       art::PtrVector<recob::Vertex> vertex;
-      this->GetVertices(evt, which, vertex);
-      this->VertexOrtho(vertex, proj, view, 24);
+      GetVertices(evt, which, vertex);
+      VertexOrtho(vertex, proj, view, 24);
 
-      //this->GetVertices(evt, art::InputTag(which.label(), "kink", which.process()), vertex);
-      //this->VertexOrtho(vertex, proj, view, 27);
+      //GetVertices(evt, art::InputTag(which.label(), "kink", which.process()), vertex);
+      //VertexOrtho(vertex, proj, view, 27);
 
-      //this->GetVertices(evt, art::InputTag(which.label(), "node", which.process()), vertex);
-      //this->VertexOrtho(vertex, proj, view, 22);
+      //GetVertices(evt, art::InputTag(which.label(), "node", which.process()), vertex);
+      //VertexOrtho(vertex, proj, view, 22);
     }
     return;
   }
@@ -3104,10 +3065,10 @@ namespace evd {
       art::InputTag const which = labels[imod];
 
       std::vector<art::Ptr<recob::SpacePoint>> spts;
-      this->GetSpacePoints(evt, which, spts);
+      GetSpacePoints(evt, which, spts);
       int color = imod;
 
-      this->DrawSpacePointOrtho(spts, color, proj, msize, view);
+      DrawSpacePointOrtho(spts, color, proj, msize, view);
     }
 
     return;
@@ -3131,7 +3092,7 @@ namespace evd {
 
       // Start off by recovering our 3D Clusters for this label
       art::PtrVector<recob::PFParticle> pfParticleVec;
-      this->GetPFParticles(evt, which, pfParticleVec);
+      GetPFParticles(evt, which, pfParticleVec);
 
       // Make sure we have some clusters
       if (pfParticleVec.size() < 1) continue;
@@ -3429,7 +3390,7 @@ namespace evd {
       for (size_t imod = 0; imod < recoOpt->fTrackLabels.size(); ++imod) {
         art::InputTag which = recoOpt->fTrackLabels[imod];
         art::View<recob::Track> track;
-        this->GetTracks(evt, which, track);
+        GetTracks(evt, which, track);
 
         for (size_t t = 0; t < track.vals().size(); ++t) {
           const recob::Track* ptrack = track.vals().at(t);
@@ -3448,7 +3409,7 @@ namespace evd {
       for (size_t imod = 0; imod < recoOpt->fShowerLabels.size(); ++imod) {
         art::InputTag which = recoOpt->fShowerLabels[imod];
         art::View<recob::Shower> shower;
-        this->GetShowers(evt, which, shower);
+        GetShowers(evt, which, shower);
 
         for (size_t s = 0; s < shower.vals().size(); ++s) {
           const recob::Shower* pshower = shower.vals().at(s);
@@ -3727,7 +3688,7 @@ namespace evd {
                               unsigned int plane)
   {
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = getWireReadoutGeom();
 
     hits.clear();
 
@@ -3739,7 +3700,7 @@ namespace evd {
         // Note that the WireID in the hit object is useless for those detectors where a channel can correspond to
         // more than one plane/wire. So our plan is to recover the list of wire IDs from the channel number and
         // loop over those (if there are any)
-        const std::vector<geo::WireID>& wireIDs = geo->ChannelToWire(hit->Channel());
+        const std::vector<geo::WireID>& wireIDs = wireReadoutGeom.ChannelToWire(hit->Channel());
 
         // Loop to find match
         for (const auto& wireID : wireIDs) {
@@ -4048,7 +4009,7 @@ namespace evd {
   {
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = getWireReadoutGeom();
 
     float minSig(std::numeric_limits<float>::max());
     float maxSig(std::numeric_limits<float>::lowest());
@@ -4061,11 +4022,11 @@ namespace evd {
       art::InputTag const which = recoOpt->fWireLabels[imod];
 
       art::PtrVector<recob::Wire> wires;
-      this->GetWires(evt, which, wires);
+      GetWires(evt, which, wires);
 
       for (size_t i = 0; i < wires.size(); ++i) {
 
-        std::vector<geo::WireID> wireids = geo->ChannelToWire(wires[i]->Channel());
+        std::vector<geo::WireID> wireids = wireReadoutGeom.ChannelToWire(wires[i]->Channel());
 
         bool goodWID = false;
         for (auto const& wid : wireids) {
@@ -4078,8 +4039,6 @@ namespace evd {
 
         std::vector<float> wirSig = wires[i]->Signal();
         for (unsigned int ii = 0; ii < wirSig.size(); ++ii) {
-          //                histo->SetLineColor(imod+4);
-          //                histo->Fill(1.*ii, wirSig[ii]);
           minSig = std::min(minSig, wirSig[ii]);
           maxSig = std::max(maxSig, wirSig[ii]);
         }
@@ -4101,7 +4060,7 @@ namespace evd {
   {
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = getWireReadoutGeom();
 
     // Check if we're supposed to draw raw hits at all
     if (rawOpt->fDrawRawDataOrCalibWires == 0) return;
@@ -4110,11 +4069,11 @@ namespace evd {
       art::InputTag const which = recoOpt->fWireLabels[imod];
 
       art::PtrVector<recob::Wire> wires;
-      this->GetWires(evt, which, wires);
+      GetWires(evt, which, wires);
 
       for (unsigned int i = 0; i < wires.size(); ++i) {
 
-        std::vector<geo::WireID> wireids = geo->ChannelToWire(wires[i]->Channel());
+        std::vector<geo::WireID> wireids = wireReadoutGeom.ChannelToWire(wires[i]->Channel());
 
         bool goodWID = false;
         for (auto const& wid : wireids) {
@@ -4126,10 +4085,6 @@ namespace evd {
         std::vector<float> wirSig = wires[i]->Signal();
         for (unsigned int ii = 0; ii < wirSig.size(); ++ii)
           histo->Fill(wirSig[ii]);
-        /*
-        for(size_t s = 0; s < wires[i]->NSignal(); ++s)
-          histo->Fill(wires[i]->Signal()[s]);
-*/
 
       } //end loop over raw hits
     }   //end loop over Wire modules
@@ -4153,7 +4108,7 @@ namespace evd {
   {
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
     art::ServiceHandle<evd::RecoDrawingOptions const> recoOpt;
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = getWireReadoutGeom();
 
     // Check if we're supposed to draw raw hits at all
     if (rawOpt->fDrawRawDataOrCalibWires == 0) return;
@@ -4162,11 +4117,11 @@ namespace evd {
       art::InputTag const which = recoOpt->fWireLabels[imod];
 
       art::PtrVector<recob::Wire> wires;
-      this->GetWires(evt, which, wires);
+      GetWires(evt, which, wires);
 
       for (size_t i = 0; i < wires.size(); ++i) {
 
-        std::vector<geo::WireID> wireids = geo->ChannelToWire(wires[i]->Channel());
+        std::vector<geo::WireID> wireids = wireReadoutGeom.ChannelToWire(wires[i]->Channel());
 
         bool goodWID = false;
         for (auto const& wid : wireids) {
@@ -4188,7 +4143,7 @@ namespace evd {
       art::InputTag const which = recoOpt->fHitLabels[imod];
 
       std::vector<const recob::Hit*> hits;
-      this->GetHits(evt, which, hits, plane);
+      GetHits(evt, which, hits, plane);
 
       auto hitResults = anab::FVectorReader<recob::Hit, 4>::create(evt, "dprawhit");
       const auto& fitParams = hitResults->vectors();
@@ -4209,38 +4164,6 @@ namespace evd {
         hLocalHitIndex.push_back(hits[i]->LocalIndex());
       } //end loop over reco hits
     }   //end loop over HitFinding modules
-
-    return;
   }
 
-  //......................................................................
-  //double RecoBaseDrawer::EvalExpoFit(double x,
-  //				   double tau1,
-  //				   double tau2,
-  //				   double amplitude,
-  //				   double peaktime)
-  //{
-  //return (amplitude * exp(0.4*(x-peaktime)/tau1) / ( 1 + exp(0.4*(x-peaktime)/tau2) ) );
-  //}
-
-  //......................................................................
-  //double RecoBaseDrawer::EvalMultiExpoFit(double x,
-  //					int HitNumber,
-  //					int NHits,
-  //                                    std::vector<double> tau1,
-  //                                    std::vector<double> tau2,
-  //                                    std::vector<double> amplitude,
-  //                                    std::vector<double> peaktime)
-  //{
-  //    double x_sum = 0.;
-  //
-  //    for(int i = HitNumber; i < HitNumber+NHits; i++)
-  //    {
-  //    x_sum += (amplitude[i] * exp(0.4*(x-peaktime[i])/tau1[i]) / ( 1 + exp(0.4*(x-peaktime[i])/tau2[i]) ) );
-  //    }
-  //
-  //return x_sum;
-  //}
-
 } // namespace evd
-////////////////////////////////////////////////////////////////////////

@@ -11,7 +11,6 @@
 
 #include "lareventdisplay/EventDisplay/DrawingPad.h"
 
-class TH3F;
 namespace evdb {
   class View3D;
 }
@@ -25,13 +24,7 @@ namespace evd {
   /// A drawing pad showing a 3D rendering of the detector
   class Display3DPad : public DrawingPad {
   public:
-    Display3DPad(const char* nm,
-                 const char* ti,
-                 double x1,
-                 double y1,
-                 double x2,
-                 double y2,
-                 const char* opt);
+    Display3DPad(const char* nm, const char* ti, double x1, double y1, double x2, double y2);
     ~Display3DPad();
 
     void Draw();
