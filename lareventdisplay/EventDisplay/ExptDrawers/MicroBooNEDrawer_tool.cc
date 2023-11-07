@@ -46,7 +46,7 @@ namespace evd_tool {
                   int color = kGray,
                   int width = 1,
                   int style = 1);
-    void DrawBadChannels(art::Timestamp t,
+    void DrawBadChannels(lariov::ChannelStatusData const& channelStatus,
                          evdb::View3D* view,
                          double* coords,
                          int color,
@@ -98,9 +98,11 @@ namespace evd_tool {
     if (fDrawGrid) DrawGrids(view, coordsLo, coordsHi, kGray + 2, 1, 1);
 
     if (fDrawAxes) DrawAxes(view, coordsLo, coordsHi, kBlue, 1, 1);
-
-    if (fDrawBadChannels) DrawBadChannels(evt.time(), view, coordsHi, kGray, 1, 1);
-
+    
+    if (fDrawBadChannels) {
+      auto const& channelStatus = art::ServiceHandle<lariov::ChannelStatusService>()->DataFor(evt);
+      DrawBadChannels(*channelStatus, view, coordsHi, kGray, 1, 1);
+    }
     return;
   }
 
@@ -262,7 +264,7 @@ namespace evd_tool {
     return;
   }
 
-  void MicroBooNEDrawer::DrawBadChannels(art::Timestamp ts,
+  void MicroBooNEDrawer::DrawBadChannels(lariov::ChannelStatusData const& channelStatus,
                                          evdb::View3D* view,
                                          double* coords,
                                          int color,
@@ -271,10 +273,6 @@ namespace evd_tool {
   {
     art::ServiceHandle<geo::Geometry const> geo;
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
-
-    lariov::ChannelStatusProvider const& channelStatus =
-      art::ServiceHandle<lariov::ChannelStatusService const>()->GetProvider();
-
     // We want to translate the wire position to the opposite side of the TPC...
     for (size_t viewNo = 0; viewNo < geo->Nviews(); viewNo++) {
       geo::PlaneID const planeID(rawOpt->fCryostat, rawOpt->fTPC, viewNo);
@@ -283,7 +281,7 @@ namespace evd_tool {
 
         raw::ChannelID_t channel = geo->PlaneWireToChannel(wireID);
 
-        if (channelStatus.IsBad(ts.value(), channel)) {
+        if (channelStatus.IsBad(channel)) {
           const geo::WireGeo* wireGeo = geo->WirePtr(wireID);
 
           auto const wireStart = wireGeo->GetStart();

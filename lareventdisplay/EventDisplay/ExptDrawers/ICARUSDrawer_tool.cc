@@ -46,7 +46,7 @@ namespace evd_tool {
                   int color = kGray,
                   int width = 1,
                   int style = 1);
-    void DrawBadChannels(art::Timestamp ts,
+    void DrawBadChannels(lariov::ChannelStatusData const& channelStatus,
                          evdb::View3D* view,
                          double* coords,
                          int color,
@@ -84,7 +84,7 @@ namespace evd_tool {
 
     geo->WorldBox(&xl, &xu, &yl, &yu, &zl, &zu);
 
-    auto ts = evt.time();
+    auto const& channelStatus = art::ServiceHandle<lariov::ChannelStatusService>()->DataFor(evt); 
     std::cout << "--- building ICARUS 3D display, low coord: " << xl << ", " << yl << ", " << zl
               << ", hi coord: " << xu << ", " << yu << ", " << zu << std::endl;
 
@@ -128,7 +128,7 @@ namespace evd_tool {
         // It could be that we don't want to see the grids
         if (fDrawGrid) DrawGrids(view, coordsLo, coordsHi, tpcIdx > 0, kGray + 2, 1, 1);
 
-        if (fDrawBadChannels) DrawBadChannels(ts, view, coordsHi, kGray, 1, 1);
+        if (fDrawBadChannels) DrawBadChannels(*channelStatus, view, coordsHi, kGray, 1, 1);
       }
     }
 
@@ -290,7 +290,7 @@ namespace evd_tool {
     return;
   }
 
-  void ICARUSDrawer::DrawBadChannels(art::Timestamp ts,
+  void ICARUSDrawer::DrawBadChannels(lariov::ChannelStatusData const& channelStatus, 
                                      evdb::View3D* view,
                                      double* coords,
                                      int color,
@@ -300,8 +300,6 @@ namespace evd_tool {
     art::ServiceHandle<geo::Geometry const> geo;
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
 
-    lariov::ChannelStatusProvider const& channelStatus =
-      art::ServiceHandle<lariov::ChannelStatusService const>()->GetProvider();
 
     // We want to translate the wire position to the opposite side of the TPC...
     for (size_t viewNo = 0; viewNo < geo->Nviews(); viewNo++) {
@@ -311,7 +309,7 @@ namespace evd_tool {
 
         raw::ChannelID_t channel = geo->PlaneWireToChannel(wireID);
 
-        if (channelStatus.IsBad(ts.value(), channel)) {
+        if (channelStatus.IsBad(channel)) {
           const geo::WireGeo* wireGeo = geo->WirePtr(wireID);
 
           auto const wireStart = wireGeo->GetStart();

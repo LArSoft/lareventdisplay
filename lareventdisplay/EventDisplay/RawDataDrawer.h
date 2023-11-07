@@ -146,7 +146,7 @@ namespace evd {
     void GetRawDigits(art::Event const& evt);
 
     /// Returns whether a channel with the specified status should be processed
-    bool ProcessChannelWithStatus(lariov::ChannelStatusProvider::Status_t channel_status) const;
+    bool ProcessChannelWithStatus(lariov::chStatus channel_status) const;
 #endif // __CINT__
 
     double fStartTick; ///< low tick

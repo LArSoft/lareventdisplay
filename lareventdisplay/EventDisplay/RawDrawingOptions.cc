@@ -3,9 +3,9 @@
 ///
 /// \author  brebel@fnal.gov
 
+#include <limits>
 /// LArSoft includes
 #include "lareventdisplay/EventDisplay/RawDrawingOptions.h"
-#include "larevt/CalibrationDBI/Interface/ChannelStatusProvider.h"
 
 namespace evd {
 
@@ -31,7 +31,7 @@ namespace evd {
     fCryostat = pset.get<unsigned int>("Cryostat", 0);
     fMinChannelStatus = pset.get<unsigned int>("MinChannelStatus", 0);
     fMaxChannelStatus =
-      pset.get<unsigned int>("MaxChannelStatus", lariov::ChannelStatusProvider::InvalidStatus - 1);
+      pset.get<unsigned int>("MaxChannelStatus", std::numeric_limits<unsigned short>::max() - 1);
     fUncompressWithPed = pset.get<bool>("UncompressWithPed", false);
     fSeeBadChannels = pset.get<bool>("SeeBadChannels", false);
     fRoIthresholds = pset.get<std::vector<float>>("RoIthresholds", std::vector<float>());

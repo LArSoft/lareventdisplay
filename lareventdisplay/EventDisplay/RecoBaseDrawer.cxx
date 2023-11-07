@@ -127,8 +127,8 @@ namespace evd {
 
     if (rawOpt->fDrawRawDataOrCalibWires < 1) return;
 
-    lariov::ChannelStatusProvider const& channelStatus =
-      art::ServiceHandle<lariov::ChannelStatusService const>()->GetProvider();
+    auto const& channelStatus =
+      art::ServiceHandle<lariov::ChannelStatusService const>()->DataFor(evt);
 
     int ticksPerPoint = rawOpt->fTicksPerPoint;
 
@@ -152,7 +152,7 @@ namespace evd {
 
         uint32_t channel = wires[i]->Channel();
 
-        if (!rawOpt->fSeeBadChannels && channelStatus.IsBad(evt.time().value(), channel)) continue;
+        if (!rawOpt->fSeeBadChannels && channelStatus->IsBad(channel)) continue;
 
         std::vector<geo::WireID> wireids = geo->ChannelToWire(channel);
 
@@ -236,7 +236,7 @@ namespace evd {
       raw::ChannelID_t channel =
         geo->PlaneWireToChannel(geo::WireID(rawOpt->fCryostat, rawOpt->fTPC, plane, wireNo));
 
-      if (!rawOpt->fSeeBadChannels && channelStatus.IsBad(evt.time().value(), channel)) {
+      if (!rawOpt->fSeeBadChannels && channelStatus->IsBad(channel)) {
         double wire = 1. * wireNo;
         TLine& line = view->AddLine(wire, startTick, wire, endTick);
         line.SetLineColor(kGray);

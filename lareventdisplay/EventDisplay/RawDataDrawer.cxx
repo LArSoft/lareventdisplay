@@ -770,8 +770,8 @@ namespace evd {
     // but it's way better if the failure throws an exception
     if (!operation->Initialize()) return false;
 
-    lariov::ChannelStatusProvider const& channelStatus =
-      art::ServiceHandle<lariov::ChannelStatusService const>()->GetProvider();
+    auto const& channelStatus =
+      art::ServiceHandle<lariov::ChannelStatusService const>()->DataFor(evt);
 
     //get pedestal conditions
     const lariov::DetPedestalProvider& pedestalRetrievalAlg =
@@ -785,9 +785,9 @@ namespace evd {
       raw::ChannelID_t const channel = hit.Channel();
 
       // skip the bad channels
-      if (!channelStatus.IsPresent(evt.time().value(), channel)) continue;
+      if (!channelStatus->IsPresent(channel)) continue;
       // The following test is meant to be temporary until the "correct" solution is implemented
-      if (!ProcessChannelWithStatus(channelStatus.Status(evt.time().value(), channel))) continue;
+      if (!ProcessChannelWithStatus(channelStatus->Status(channel))) continue;
 
       // we have a list of all channels, but we are drawing only on one plane;
       // most of the channels will not contribute to this plane,
@@ -806,7 +806,7 @@ namespace evd {
 
       // collect bad channels
       bool const bGood =
-        rawopt->fSeeBadChannels || !channelStatus.IsBad(evt.time().value(), channel);
+        rawopt->fSeeBadChannels || !channelStatus->IsBad(channel);
 
       // nothing else to be done if the channel is not good:
       // cells are marked bad by default and if any good channel falls in any of
@@ -1279,24 +1279,23 @@ namespace evd {
       details::CacheID_t NewCacheID(evt, rawDataLabel, pid);
       GetRawDigits(evt, NewCacheID);
 
-      lariov::ChannelStatusProvider const& channelStatus =
-        art::ServiceHandle<lariov::ChannelStatusService const>()->GetProvider();
-
+      auto const& channelStatus =
+        art::ServiceHandle<lariov::ChannelStatusService const>()->DataFor(evt);
+      auto ts = evt.time().value();
       //get pedestal conditions
       const lariov::DetPedestalProvider& pedestalRetrievalAlg =
         art::ServiceHandle<lariov::DetPedestalService const>()->GetPedestalProvider();
-      auto ts = evt.time().value();
       for (evd::details::RawDigitInfo_t const& digit_info : *digit_cache) {
         raw::RawDigit const& hit = digit_info.Digit();
         raw::ChannelID_t const channel = hit.Channel();
 
-        if (!channelStatus.IsPresent(ts, channel)) continue;
+        if (!channelStatus->IsPresent(channel)) continue;
 
         // The following test is meant to be temporary until the "correct" solution is implemented
-        if (!ProcessChannelWithStatus(channelStatus.Status(ts, channel))) continue;
+        if (!ProcessChannelWithStatus(channelStatus->Status(channel))) continue;
 
         // to be explicit: we don't cound bad channels in
-        if (!rawopt->fSeeBadChannels && channelStatus.IsBad(ts, channel)) continue;
+        if (!rawopt->fSeeBadChannels && channelStatus->IsBad(channel)) continue;
 
         std::vector<geo::WireID> wireids = geo->ChannelToWire(channel);
         for (auto const& wid : wireids) {
@@ -1347,6 +1346,8 @@ namespace evd {
 
     // make sure we have the raw digits cached
     geo::PlaneID const pid(rawopt->CurrentTPC(), plane);
+    auto const& channelStatus =
+        art::ServiceHandle<lariov::ChannelStatusService const>()->DataFor(evt);
     auto ts = evt.time().value();
     // loop over labels
     for (const auto& rawDataLabel : rawopt->fRawDataLabels) {
@@ -1367,16 +1368,14 @@ namespace evd {
       } // if no channel
 
       // check the channel status; bad channels are still ok.
-      lariov::ChannelStatusProvider const& channelStatus =
-        art::ServiceHandle<lariov::ChannelStatusService const>()->GetProvider();
 
-      if (!channelStatus.IsPresent(ts, channel)) return;
+      if (!channelStatus->IsPresent(channel)) return;
 
       // The following test is meant to be temporary until the "correct" solution is implemented
-      if (!ProcessChannelWithStatus(channelStatus.Status(ts, channel))) return;
+      if (!ProcessChannelWithStatus(channelStatus->Status(channel))) return;
 
       // we accept to see the content of a bad channel, so this is commented out:
-      if (!rawopt->fSeeBadChannels && channelStatus.IsBad(ts, channel)) return;
+      if (!rawopt->fSeeBadChannels && channelStatus->IsBad(channel)) return;
 
       //get pedestal conditions
       const lariov::DetPedestalProvider& pedestalRetrievalAlg =
@@ -1550,8 +1549,7 @@ namespace evd {
   } // RawDataDrawer::GetRawDigits()
 
   //......................................................................
-  bool RawDataDrawer::ProcessChannelWithStatus(
-    lariov::ChannelStatusProvider::Status_t channel_status) const
+  bool RawDataDrawer::ProcessChannelWithStatus(lariov::chStatus channel_status) const
   {
     // if we don't have a valid status, we can't reject the channel
     if (!lariov::ChannelStatusProvider::IsValidStatus(channel_status)) return true;
