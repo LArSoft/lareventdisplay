@@ -279,6 +279,9 @@ namespace evd {
   }
 
   //----------------------------------------------------------------------------
-  std::vector<recob::Seed>& HitSelector::SeedVector() { return fSeedVector; }
+  std::vector<recob::Seed>& HitSelector::SeedVector()
+  {
+    return fSeedVector;
+  }
 
 } //end namespace

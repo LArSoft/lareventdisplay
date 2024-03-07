@@ -942,7 +942,10 @@ namespace evd {
 
   //......................................................................
 
-  void SimulationDrawer::HiLite(int trkId, bool dohilite) { fHighlite[trkId] = dohilite; }
+  void SimulationDrawer::HiLite(int trkId, bool dohilite)
+  {
+    fHighlite[trkId] = dohilite;
+  }
 
 } // namespace
 ////////////////////////////////////////////////////////////////////////

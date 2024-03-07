@@ -23,7 +23,10 @@ namespace evd {
   }
 
   //......................................................................
-  void Display3DView::CloseWindow() { delete this; }
+  void Display3DView::CloseWindow()
+  {
+    delete this;
+  }
 
   //......................................................................
   void Display3DView::Draw(const char* /*opt*/)

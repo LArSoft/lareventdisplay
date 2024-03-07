@@ -55,7 +55,10 @@ namespace evd_tool {
 
   //----------------------------------------------------------------------
   // Constructor.
-  ICARUSDrawer::ICARUSDrawer(const fhicl::ParameterSet& pset) { configure(pset); }
+  ICARUSDrawer::ICARUSDrawer(const fhicl::ParameterSet& pset)
+  {
+    configure(pset);
+  }
 
   void ICARUSDrawer::configure(const fhicl::ParameterSet& pset)
   {

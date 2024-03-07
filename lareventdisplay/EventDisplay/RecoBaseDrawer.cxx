@@ -74,7 +74,10 @@ namespace {
     mf::LogWarning("RecoBaseDrawer") << "RecoBaseDrawer::" << fcn << " failed with message:\n" << e;
   }
 
-  auto const& getWireReadoutGeom() { return art::ServiceHandle<geo::WireReadout const>()->Get(); }
+  auto const& getWireReadoutGeom()
+  {
+    return art::ServiceHandle<geo::WireReadout const>()->Get();
+  }
 } // namespace
 
 namespace evd {

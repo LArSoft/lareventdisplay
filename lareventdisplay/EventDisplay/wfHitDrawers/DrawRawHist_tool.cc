@@ -46,7 +46,10 @@ namespace evdb_tool {
 
   //----------------------------------------------------------------------
   // Constructor.
-  DrawRawHist::DrawRawHist(const fhicl::ParameterSet& pset) { configure(pset); }
+  DrawRawHist::DrawRawHist(const fhicl::ParameterSet& pset)
+  {
+    configure(pset);
+  }
 
   void DrawRawHist::configure(const fhicl::ParameterSet& pset) {}
 
