@@ -165,7 +165,7 @@ namespace evd {
         lar::util::StatCollector<float> integral, summedADC;
         for (art::Ptr<recob::Hit> const& hit : hitlist[ip]) {
           integral.add(hit->Integral());
-          summedADC.add(hit->SummedADC());
+          summedADC.add(hit->ROISummedADC());
         } // for
 
         // get the plane ID from the first hit
