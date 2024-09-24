@@ -7,6 +7,7 @@
 #include "art/Utilities/ToolMacros.h"
 
 #include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
 #include "lareventdisplay/EventDisplay/ExptDrawers/IExperimentDrawer.h"
 #include "lareventdisplay/EventDisplay/RawDrawingOptions.h"
 #include "larevt/CalibrationDBI/Interface/ChannelStatusProvider.h"
@@ -23,29 +24,27 @@ namespace evd_tool {
 
     void DetOutline3D(evdb::View3D* view) override;
 
-    ~ICARUSDrawer() {}
-
   private:
     void configure(const fhicl::ParameterSet& pset);
     void DrawRectangularBox(evdb::View3D* view,
                             double* coordsLo,
                             double* coordsHi,
-                            int color = kGray,
-                            int width = 1,
-                            int style = 1);
+                            int colorGray,
+                            int width,
+                            int style);
     void DrawGrids(evdb::View3D* view,
                    double* coordsLo,
                    double* coordsHi,
                    bool verticalGrid,
-                   int color = kGray,
-                   int width = 1,
-                   int style = 1);
+                   int color,
+                   int width,
+                   int style);
     void DrawAxes(evdb::View3D* view,
                   double* coordsLo,
                   double* coordsHi,
-                  int color = kGray,
-                  int width = 1,
-                  int style = 1);
+                  int color,
+                  int width,
+                  int style);
     void DrawBadChannels(evdb::View3D* view, double* coords, int color, int width, int style);
 
     // Member variables from the fhicl file
@@ -293,22 +292,22 @@ namespace evd_tool {
                                      int width,
                                      int style)
   {
-    art::ServiceHandle<geo::Geometry const> geo;
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
 
     lariov::ChannelStatusProvider const& channelStatus =
       art::ServiceHandle<lariov::ChannelStatusService const>()->GetProvider();
 
     // We want to translate the wire position to the opposite side of the TPC...
-    for (size_t viewNo = 0; viewNo < geo->Nviews(); viewNo++) {
+    for (size_t viewNo = 0; viewNo < wireReadoutGeom.Nviews(); viewNo++) {
       geo::PlaneID const planeID(rawOpt->fCryostat, rawOpt->fTPC, viewNo);
-      for (size_t wireNo = 0; wireNo < geo->Nwires(planeID); wireNo++) {
+      for (size_t wireNo = 0; wireNo < wireReadoutGeom.Nwires(planeID); wireNo++) {
         geo::WireID wireID = geo::WireID(planeID, wireNo);
 
-        raw::ChannelID_t channel = geo->PlaneWireToChannel(wireID);
+        raw::ChannelID_t channel = wireReadoutGeom.PlaneWireToChannel(wireID);
 
         if (channelStatus.IsBad(channel)) {
-          const geo::WireGeo* wireGeo = geo->WirePtr(wireID);
+          const geo::WireGeo* wireGeo = wireReadoutGeom.WirePtr(wireID);
 
           auto const wireStart = wireGeo->GetStart();
           auto const wireEnd = wireGeo->GetEnd();
@@ -319,8 +318,6 @@ namespace evd_tool {
         }
       }
     }
-
-    return;
   }
 
   DEFINE_ART_CLASS_TOOL(ICARUSDrawer)

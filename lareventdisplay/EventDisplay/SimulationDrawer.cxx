@@ -17,6 +17,7 @@
 
 #include "larcore/CoreUtils/ServiceUtil.h"
 #include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
 #include "larcorealg/Geometry/TPCGeo.h"
 #include "lardata/DetectorInfoServices/DetectorClocksService.h"
 #include "lardata/DetectorInfoServices/DetectorPropertiesService.h"
@@ -199,9 +200,9 @@ namespace evd {
       return;
     }
 
-    art::ServiceHandle<geo::Geometry const> geo;
     art::ServiceHandle<evd::RawDrawingOptions const> rawopt;
     geo::PlaneID const planeID{rawopt->fCryostat, rawopt->fTPC, plane};
+    auto const& planeg = art::ServiceHandle<geo::WireReadout>()->Get().Plane(planeID);
 
     // shift the truth by a fixed amount so it doesn't overlay the reco
     double const xShift = -2;
@@ -257,8 +258,8 @@ namespace evd {
           geo::Point_t const xyz2{xyz1.X() + r * p.Px() / p.P(),
                                   xyz1.Y() + r * p.Py() / p.P(),
                                   xyz1.Z() + r * p.Pz() / p.P()};
-          double w1 = geo->WireCoordinate(xyz1, planeID);
-          double w2 = geo->WireCoordinate(xyz2, planeID);
+          double w1 = planeg.WireCoordinate(xyz1);
+          double w2 = planeg.WireCoordinate(xyz2);
 
           double time = detProp.ConvertXToTicks(xyz1.X() + xShift, planeID);
           double time2 = detProp.ConvertXToTicks(xyz2.X() + xShift, planeID);
@@ -301,9 +302,9 @@ namespace evd {
         geo::Point_t const xyz2{xyz1.X() + r * p->Px() / p->P(),
                                 xyz1.Y() + r * p->Py() / p->P(),
                                 xyz1.Z() + r * p->Pz() / p->P()};
-        double w1 = geo->WireCoordinate(xyz1, planeID);
+        double w1 = planeg.WireCoordinate(xyz1);
         double t1 = detProp.ConvertXToTicks(xyz1.X(), planeID);
-        double w2 = geo->WireCoordinate(xyz2, planeID);
+        double w2 = planeg.WireCoordinate(xyz2);
         double t2 = detProp.ConvertXToTicks(xyz2.X(), planeID);
         TLine& l = view->AddLine(w1, t1, w2, t2);
         l.SetLineWidth(2);

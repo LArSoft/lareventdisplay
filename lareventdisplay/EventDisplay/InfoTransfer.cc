@@ -9,7 +9,7 @@
 
 #include "lareventdisplay/EventDisplay/InfoTransfer.h"
 
-#include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
 #include "larcoreobj/SimpleTypesAndConstants/geo_types.h"
 #include "lardata/Utilities/PxUtils.h"
 #include "lardataobj/RecoBase/Hit.h"
@@ -43,8 +43,8 @@ namespace evd {
     fRun = -1;
     fSubRun = -1;
     reg.sPreProcessEvent.watch(this, &InfoTransfer::Rebuild);
-    art::ServiceHandle<geo::Geometry const> geo;
-    unsigned int nplanes = geo->Nplanes();
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
+    unsigned int nplanes = wireReadoutGeom.Nplanes();
 
     fSelectedHitlist.resize(nplanes);
     fStartHit.resize(nplanes);
@@ -61,7 +61,6 @@ namespace evd {
       refstarthitout[i].resize(2);
       refendhitout[i].resize(2);
     }
-    // hitlist=NULL;
   }
 
   //......................................................................
@@ -70,8 +69,8 @@ namespace evd {
   //......................................................................
   void InfoTransfer::reconfigure(fhicl::ParameterSet const& pset)
   {
-    art::ServiceHandle<geo::Geometry const> geo;
-    unsigned int nplanes = geo->Nplanes();
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
+    unsigned int nplanes = wireReadoutGeom.Nplanes();
     //clear everything
     fRefinedHitlist.resize(nplanes);
     fSelectedHitlist.resize(nplanes);
@@ -85,8 +84,8 @@ namespace evd {
   //......................................................................
   void InfoTransfer::Rebuild(const art::Event& evt, art::ScheduleContext)
   {
-    art::ServiceHandle<geo::Geometry const> geo;
-    unsigned int nplanes = geo->Nplanes();
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
+    unsigned int nplanes = wireReadoutGeom.Nplanes();
     unsigned int which_call = evdb::NavState::Which();
     if (which_call != 2) {
       //unless we're reloading we want to clear all the selected and refined hits
@@ -116,10 +115,7 @@ namespace evd {
     fSubRun = evt.id().subRun();
     evt.getByLabel(fHitModuleLabel, hHandle);
 
-    if (hHandle.failedToGet()) {
-      //      mf::LogWarning("InfoTransfer") << "failed to get handle to std::vector<recob::Hit> from "<< fHitModuleLabel;
-      return;
-    }
+    if (hHandle.failedToGet()) { return; }
 
     // Clear out anything remaining from previous calls to Rebuild
 
@@ -184,8 +180,6 @@ namespace evd {
         }
       }
     }
-    //for(int ip=0;ip<nplanes;ip++)
-    //  FillStartEndHitCoords(ip);
 
     fSelectedHitlist.clear();
     fSelectedHitlist = fRefinedHitlist;
@@ -208,9 +202,6 @@ namespace evd {
   //......................................................................
   void InfoTransfer::FillStartEndHitCoords(unsigned int plane)
   {
-
-    art::ServiceHandle<geo::Geometry const> geo;
-    // std::vector <double> sthitout(2);
     if (fRefStartHit[plane]) {
       starthitout[plane][1] = fRefStartHit[plane]->PeakTime();
       try {

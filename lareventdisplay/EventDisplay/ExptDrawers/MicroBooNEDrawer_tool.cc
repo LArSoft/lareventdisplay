@@ -4,6 +4,7 @@
 ////////////////////////////////////////////////////////////////////////
 
 #include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
 #include "lareventdisplay/EventDisplay/ExptDrawers/IExperimentDrawer.h"
 #include "lareventdisplay/EventDisplay/RawDrawingOptions.h"
 #include "larevt/CalibrationDBI/Interface/ChannelStatusProvider.h"
@@ -22,8 +23,6 @@ namespace evd_tool {
     explicit MicroBooNEDrawer(const fhicl::ParameterSet& pset);
 
     void DetOutline3D(evdb::View3D* view) override;
-
-    ~MicroBooNEDrawer() {}
 
   private:
     void configure(const fhicl::ParameterSet& pset);
@@ -68,27 +67,24 @@ namespace evd_tool {
     fDrawGrid = pset.get<bool>("DrawGrid", true);
     fDrawAxes = pset.get<bool>("DrawAxes", true);
     fDrawBadChannels = pset.get<bool>("DrawBadChannels", true);
-
-    return;
   }
 
   //......................................................................
   void MicroBooNEDrawer::DetOutline3D(evdb::View3D* view)
   {
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& tpc = art::ServiceHandle<geo::Geometry const>()->TPC({0, 0});
 
     // If requested, draw the outer three window volume first
     if (fThreeWindow) {
-      double threeWinCoordsLo[] = {-2. * geo->DetHalfWidth(), -geo->DetHalfHeight(), 0.};
-      double threeWinCoordsHi[] = {
-        4. * geo->DetHalfWidth(), geo->DetHalfHeight(), geo->DetLength()};
+      double threeWinCoordsLo[] = {-2. * tpc.HalfWidth(), -tpc.HalfHeight(), 0.};
+      double threeWinCoordsHi[] = {4. * tpc.HalfWidth(), tpc.HalfHeight(), tpc.Length()};
 
       DrawRectangularBox(view, threeWinCoordsLo, threeWinCoordsHi, kGray);
     }
 
     // Now draw the standard volume
-    double coordsLo[] = {0., -geo->DetHalfHeight(), 0.};
-    double coordsHi[] = {2. * geo->DetHalfWidth(), geo->DetHalfHeight(), geo->DetLength()};
+    double coordsLo[] = {0., -tpc.HalfHeight(), 0.};
+    double coordsHi[] = {2. * tpc.HalfWidth(), tpc.HalfHeight(), tpc.Length()};
 
     DrawRectangularBox(view, coordsLo, coordsHi, kRed, 2, 1);
 
@@ -98,8 +94,6 @@ namespace evd_tool {
     if (fDrawAxes) DrawAxes(view, coordsLo, coordsHi, kBlue, 1, 1);
 
     if (fDrawBadChannels) DrawBadChannels(view, coordsHi, kGray, 1, 1);
-
-    return;
   }
 
   void MicroBooNEDrawer::DrawRectangularBox(evdb::View3D* view,
@@ -136,8 +130,6 @@ namespace evd_tool {
     bottom.SetPoint(2, coordsHi[0], coordsLo[1], coordsHi[2]);
     bottom.SetPoint(3, coordsLo[0], coordsLo[1], coordsHi[2]);
     bottom.SetPoint(4, coordsLo[0], coordsLo[1], coordsLo[2]);
-
-    return;
   }
 
   void MicroBooNEDrawer::DrawGrids(evdb::View3D* view,
@@ -182,6 +174,7 @@ namespace evd_tool {
       if (y > coordsHi[1]) break;
     }
     y = -10.0;
+
     for (;;) {
       TPolyLine3D& grids = view->AddPolyLine3D(2, color, style, width);
       grids.SetPoint(0, coordsHi[0], y, coordsLo[2]);
@@ -189,8 +182,6 @@ namespace evd_tool {
       y -= 10.0;
       if (y < coordsLo[1]) break;
     }
-
-    return;
   }
 
   void MicroBooNEDrawer::DrawAxes(evdb::View3D* view,
@@ -200,7 +191,6 @@ namespace evd_tool {
                                   int width,
                                   int style)
   {
-
     // Indicate coordinate system
     double x0 = -0.20;               // Center location of the key
     double y0 = 1.10 * coordsLo[1];  // Center location of the key
@@ -256,8 +246,6 @@ namespace evd_tool {
     xleg.SetPoint(4, x0 + 1.05 * sz, y0 - 0.05 * sz, z0 - 0.05 * sz);
     xleg.SetPoint(5, x0 + 1.05 * sz, y0 + 0.00 * sz, z0 - 0.00 * sz);
     xleg.SetPoint(6, x0 + 1.05 * sz, y0 - 0.05 * sz, z0 + 0.05 * sz);
-
-    return;
   }
 
   void MicroBooNEDrawer::DrawBadChannels(evdb::View3D* view,
@@ -266,22 +254,22 @@ namespace evd_tool {
                                          int width,
                                          int style)
   {
-    art::ServiceHandle<geo::Geometry const> geo;
     art::ServiceHandle<evd::RawDrawingOptions const> rawOpt;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
 
     lariov::ChannelStatusProvider const& channelStatus =
       art::ServiceHandle<lariov::ChannelStatusService const>()->GetProvider();
 
     // We want to translate the wire position to the opposite side of the TPC...
-    for (size_t viewNo = 0; viewNo < geo->Nviews(); viewNo++) {
+    for (size_t viewNo = 0; viewNo < wireReadoutGeom.Nviews(); viewNo++) {
       geo::PlaneID const planeID(rawOpt->fCryostat, rawOpt->fTPC, viewNo);
-      for (size_t wireNo = 0; wireNo < geo->Nwires(planeID); wireNo++) {
+      for (size_t wireNo = 0; wireNo < wireReadoutGeom.Nwires(planeID); wireNo++) {
         geo::WireID wireID = geo::WireID(planeID, wireNo);
 
-        raw::ChannelID_t channel = geo->PlaneWireToChannel(wireID);
+        raw::ChannelID_t channel = wireReadoutGeom.PlaneWireToChannel(wireID);
 
         if (channelStatus.IsBad(channel)) {
-          const geo::WireGeo* wireGeo = geo->WirePtr(wireID);
+          const geo::WireGeo* wireGeo = wireReadoutGeom.WirePtr(wireID);
 
           auto const wireStart = wireGeo->GetStart();
           auto const wireEnd = wireGeo->GetEnd();
@@ -292,8 +280,6 @@ namespace evd_tool {
         }
       }
     }
-
-    return;
   }
 
   DEFINE_ART_CLASS_TOOL(MicroBooNEDrawer)

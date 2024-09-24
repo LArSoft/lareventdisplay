@@ -3,7 +3,7 @@
 /// \author T. Usher
 ////////////////////////////////////////////////////////////////////////
 
-#include "larcore/Geometry/Geometry.h"
+#include "larcore/Geometry/WireReadout.h"
 #include "lardataobj/RawData/RawDigit.h"
 #include "lardataobj/RawData/raw.h"
 #include "lareventdisplay/EventDisplay/ColorDrawingOptions.h"
@@ -28,8 +28,6 @@ namespace evdb_tool {
   public:
     explicit DrawRawHist(const fhicl::ParameterSet& pset);
 
-    ~DrawRawHist();
-
     void configure(const fhicl::ParameterSet& pset) override;
     void Fill(evdb::View2D&, raw::ChannelID_t&, float, float) override;
     void Draw(const std::string&, float, float) override;
@@ -53,12 +51,7 @@ namespace evdb_tool {
     configure(pset);
   }
 
-  DrawRawHist::~DrawRawHist() {}
-
-  void DrawRawHist::configure(const fhicl::ParameterSet& pset)
-  {
-    return;
-  }
+  void DrawRawHist::configure(const fhicl::ParameterSet& pset) {}
 
   void DrawRawHist::Fill(evdb::View2D& view2D,
                          raw::ChannelID_t& channel,
@@ -132,8 +125,6 @@ namespace evdb_tool {
         break;
       }
     }
-
-    return;
   }
 
   void DrawRawHist::Draw(const std::string& options, float maxLowVal, float maxHiVal)
@@ -145,22 +136,20 @@ namespace evdb_tool {
     histPtr->SetMinimum(maxLowVal);
 
     histPtr->Draw(options.c_str());
-
-    return;
   }
 
   //......................................................................
   void DrawRawHist::BookHistogram(raw::ChannelID_t& channel, float startTick, float numTicks)
   {
     art::ServiceHandle<evd::ColorDrawingOptions const> cst;
-    art::ServiceHandle<geo::Geometry const> geo;
+    auto const& wireReadoutGeom = art::ServiceHandle<geo::WireReadout const>()->Get();
 
     // Get rid of the previous histograms
     if (fRawDigitHist.get()) fRawDigitHist.reset();
 
     // figure out the signal type for this plane, assume that
     // plane n in each TPC/cryostat has the same type
-    geo::SigType_t sigType = geo->SignalType(channel);
+    geo::SigType_t sigType = wireReadoutGeom.SignalType(channel);
     int numBins = numTicks;
 
     fRawDigitHist = std::make_unique<TH1F>(

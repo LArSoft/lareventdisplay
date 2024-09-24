@@ -38,13 +38,12 @@ namespace evd {
                              double x1,
                              double y1,
                              double x2,
-                             double y2,
-                             const char* /*opt*/)
+                             double y2)
     : DrawingPad(nm, ti, x1, y1, x2, y2)
   {
-    this->Pad()->SetFillColor(kBlack);
-    this->Pad()->Draw();
-    this->Pad()->cd();
+    Pad()->SetFillColor(kBlack);
+    Pad()->Draw();
+    Pad()->cd();
     fView = new evdb::View3D();
 
     // Set up the 3D drawing tools for the simulation
@@ -72,18 +71,14 @@ namespace evd {
 
       fReco3DDrawerVec.push_back(art::make_tool<evdb_tool::I3DDrawer>(draw3DToolParamSet));
     }
-
-    return;
   }
 
   //......................................................................
 
   Display3DPad::~Display3DPad()
   {
-    if (fView) {
-      delete fView;
-      fView = 0;
-    }
+    delete fView;
+    fView = nullptr;
   }
 
   //......................................................................
@@ -98,16 +93,15 @@ namespace evd {
     const art::Event* evt = evdb::EventHolder::Instance()->GetEvent();
 
     if (evt) {
-      this->GeometryDraw()->DetOutline3D(fView);
-      //        this->SimulationDraw()->MCTruth3D    (*evt, fView);
-      this->RecoBaseDraw()->PFParticle3D(*evt, fView);
-      this->RecoBaseDraw()->Edge3D(*evt, fView);
-      this->RecoBaseDraw()->SpacePoint3D(*evt, fView);
-      this->RecoBaseDraw()->Prong3D(*evt, fView);
-      this->RecoBaseDraw()->Seed3D(*evt, fView);
-      this->RecoBaseDraw()->Vertex3D(*evt, fView);
-      this->RecoBaseDraw()->Event3D(*evt, fView);
-      this->RecoBaseDraw()->Slice3D(*evt, fView);
+      GeometryDraw()->DetOutline3D(fView);
+      RecoBaseDraw()->PFParticle3D(*evt, fView);
+      RecoBaseDraw()->Edge3D(*evt, fView);
+      RecoBaseDraw()->SpacePoint3D(*evt, fView);
+      RecoBaseDraw()->Prong3D(*evt, fView);
+      RecoBaseDraw()->Seed3D(*evt, fView);
+      RecoBaseDraw()->Vertex3D(*evt, fView);
+      RecoBaseDraw()->Event3D(*evt, fView);
+      RecoBaseDraw()->Slice3D(*evt, fView);
 
       // Call the 3D simulation drawing tools
       for (auto& draw3D : fSim3DDrawerVec)
@@ -118,14 +112,13 @@ namespace evd {
         draw3D->Draw(*evt, fView);
     }
 
-    this->Pad()->Clear();
-    this->Pad()->cd();
-    if (fPad->GetView() == 0) {
+    Pad()->Clear();
+    Pad()->cd();
+    if (fPad->GetView() == nullptr) {
+      auto const& tpc = geo->TPC({0, 0});
+      double rmin[] = {-2.1 * tpc.HalfWidth(), -2.1 * tpc.HalfHeight(), -0.5 * tpc.Length()};
+      double rmax[] = {2.1 * tpc.HalfWidth(), 2.1 * tpc.HalfHeight(), 0.5 * tpc.Length()};
       int irep;
-      double rmin[] = {
-        -2.1 * geo->DetHalfWidth(), -2.1 * geo->DetHalfHeight(), -0.5 * geo->DetLength()};
-      double rmax[] = {
-        2.1 * geo->DetHalfWidth(), 2.1 * geo->DetHalfHeight(), 0.5 * geo->DetLength()};
       TView3D* v = new TView3D(1, rmin, rmax);
       v->SetPerspective();
       v->SetView(0.0, 260.0, 270.0, irep);
