@@ -247,7 +247,7 @@ fcldir	product_dir	job
 #
 ####################################
 product		version		qual	flags		<table_format=2>
-larreco		v10_20_00rc0	-
+larreco		v10_20_00rc1	-
 nuevdb		v1_09_09	-
 cetmodules	v3_24_01	-	only_for_build
 end_product_list
