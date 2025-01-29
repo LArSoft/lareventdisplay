@@ -1,6 +1,12 @@
 include(CetTest)
 cet_enable_asserts()
 
+cet_transitive_paths(LIBRARY_DIR BINARY IN_TREE)
+cet_test_env_prepend(ROOT_LIBRARY_PATH ${TRANSITIVE_PATHS_WITH_LIBRARY_DIR})
+
+cet_transitive_paths(SOURCE_DIR IN_TREE)
+cet_test_env_prepend(ROOT_INCLUDE_PATH ${TRANSITIVE_PATHS_WITH_SOURCE_DIR})
+
 # Tests to ensure well-formed dictionaries for the event-display
 # classes (should be able to create a null pointer in ROOT).
 
