@@ -891,20 +891,22 @@ namespace evd {
 
     art::ServiceHandle<evd::SimulationDrawingOptions const> drawopt;
 
-    std::vector<const simb::MCParticle*> temp;
-
-    art::View<simb::MCParticle> plcol;
-    // use get by Type because there should only be one collection of these in the event
+    auto mcpsH = evt.getHandle<std::vector<simb::MCParticle>>(drawopt->fG4ModuleLabel);
     try {
-      evt.getView(drawopt->fG4ModuleLabel, plcol);
-      for (unsigned int i = 0; i < plcol.vals().size(); ++i) {
-        temp.push_back(plcol.vals().at(i));
-      }
-      temp.swap(plist);
+      *mcpsH;
     }
     catch (cet::exception& e) {
       writeErrMsg("GetRawDigits", e);
+      return 0;
     }
+
+    std::vector<const simb::MCParticle*> result;
+    result.reserve(mcpsH->size());
+    for (simb::MCParticle const& mcp : *mcpsH) {
+      result.push_back(&mcp);
+    }
+
+    std::swap(result, plist);
 
     return plist.size();
   }

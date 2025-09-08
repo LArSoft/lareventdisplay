@@ -288,13 +288,10 @@ namespace evd {
                  const art::InputTag& which,
                  std::vector<art::Ptr<recob::Edge>>& edges);
 
-    int GetTracks(const art::Event& evt,
-                  const art::InputTag& which,
-                  art::View<recob::Track>& track);
-
-    int GetShowers(const art::Event& evt,
-                   const art::InputTag& which,
-                   art::View<recob::Shower>& shower);
+    art::Handle<std::vector<recob::Track>> GetTracks(const art::Event& evt,
+                                                     const art::InputTag& which);
+    art::Handle<std::vector<recob::Shower>> GetShowers(const art::Event& evt,
+                                                       const art::InputTag& which);
 
     int GetVertices(const art::Event& evt,
                     const art::InputTag& which,
