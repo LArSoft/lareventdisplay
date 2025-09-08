@@ -1370,37 +1370,34 @@ namespace evd {
       for (size_t imod = 0; imod < recoOpt->fTrackLabels.size(); ++imod) {
         art::InputTag const which = recoOpt->fTrackLabels[imod];
 
-        art::View<recob::Track> track;
-        GetTracks(evt, which, track);
+        auto tracks = GetTracks(evt, which);
+        if (!tracks || tracks->size() < 1) continue;
 
-        if (track.vals().size() < 1) continue;
-
-        art::FindMany<recob::Hit> fmh(track, evt, which);
+        art::FindMany<recob::Hit> fmh(tracks, evt, which);
 
         art::InputTag const whichTag(
           recoOpt->fCosmicTagLabels.size() > imod ? recoOpt->fCosmicTagLabels[imod] : "");
-        art::FindManyP<anab::CosmicTag> cosmicTrackTags(track, evt, whichTag);
+        art::FindManyP<anab::CosmicTag> cosmicTrackTags(tracks, evt, whichTag);
 
         auto tracksProxy = proxy::getCollection<proxy::Tracks>(evt, which);
 
         // loop over the prongs and get the clusters and hits associated with
         // them.  only keep those that are in this view
-        for (size_t t = 0; t < track.vals().size(); ++t) {
+        for (std::size_t t = 0, n = tracks->size(); t != n; ++t) {
+          recob::Track const& track = (*tracks)[t];
           // Check for possible issue
-          if (track.vals().at(t)->NumberTrajectoryPoints() == 0) {
+          if (track.NumberTrajectoryPoints() == 0) {
             std::cout << "***** Track with no trajectory points ********" << std::endl;
             continue;
           }
 
           if (recoOpt->fDrawTracks > 1) {
             // BB: draw the track ID at the end of the track
-            geo::Point_t trackPos(track.vals().at(t)->End().X(),
-                                  track.vals().at(t)->End().Y(),
-                                  track.vals().at(t)->End().Z());
+            geo::Point_t trackPos(track.End().X(), track.End().Y(), track.End().Z());
             double tick = 30 + detProp.ConvertXToTicks(trackPos.X(), planeID);
             double wire = planeg.WireCoordinate(trackPos);
             tid =
-              track.vals().at(t)->ID() &
+              track.ID() &
               65535; //this is a hack for PMA track id which uses the 16th bit to identify shower-like track.;
             std::string s = std::to_string(tid);
             char const* txt = s.c_str();
@@ -1418,7 +1415,7 @@ namespace evd {
           }
 
           std::vector<const recob::Hit*> hits;
-          if (track.vals().at(t)->NumberTrajectoryPoints() == fmh.at(t).size()) {
+          if (track.NumberTrajectoryPoints() == fmh.at(t).size()) {
             auto tp = tracksProxy[t];
             for (auto point : tp.points()) {
               if (!point.isPointValid()) continue;
@@ -1437,7 +1434,7 @@ namespace evd {
               itr++;
           }
 
-          const recob::Track* aTrack(track.vals().at(t));
+          const recob::Track* aTrack = &track;
           int color(evd::kColor[(aTrack->ID() & 65535) % evd::kNCOLS]);
           int lineWidth(1);
 
@@ -1471,16 +1468,15 @@ namespace evd {
       for (size_t imod = 0; imod < recoOpt->fShowerLabels.size(); ++imod) {
         art::InputTag const which = recoOpt->fShowerLabels[imod];
 
-        art::View<recob::Shower> shower;
-        GetShowers(evt, which, shower);
-        if (shower.vals().size() < 1) continue;
+        auto showers = GetShowers(evt, which);
+        if (!showers || showers->size() < 1) continue;
 
-        art::FindMany<recob::Hit> fmh(shower, evt, which);
+        art::FindMany<recob::Hit> fmh(showers, evt, which);
 
         // loop over the prongs and get the clusters and hits associated with
         // them.  only keep those that are in this view
-        for (size_t s = 0; s < shower.vals().size(); ++s) {
-
+        for (std::size_t s = 0, n = showers->size(); s != n; ++s) {
+          recob::Shower const& shower = (*showers)[s];
           std::vector<const recob::Hit*> hits = fmh.at(s);
           // only get the hits for the current view
           std::vector<const recob::Hit*>::iterator itr = hits.begin();
@@ -1493,13 +1489,13 @@ namespace evd {
           if (recoOpt->fDrawShowers > 1) {
             // BB draw a line between the start and end points and a "circle" that represents
             // the shower cone angle at the end point
-            if (!shower.vals().at(s)->has_length()) continue;
-            if (!shower.vals().at(s)->has_open_angle()) continue;
+            if (!shower.has_length()) continue;
+            if (!shower.has_open_angle()) continue;
 
-            TVector3 startPos = shower.vals().at(s)->ShowerStart();
-            TVector3 dir = shower.vals().at(s)->Direction();
-            double length = shower.vals().at(s)->Length();
-            double openAngle = shower.vals().at(s)->OpenAngle();
+            TVector3 startPos = shower.ShowerStart();
+            TVector3 dir = shower.Direction();
+            double length = shower.Length();
+            double openAngle = shower.OpenAngle();
 
             // Find the center of the cone base
             TVector3 endPos = startPos + length * dir;
@@ -1513,7 +1509,7 @@ namespace evd {
             double etick = detProp.ConvertXToTicks(endPos.X(), planeID);
             TLine& coneLine = view->AddLine(swire, stick, ewire, etick);
             // color coding by dE/dx
-            std::vector<double> dedxVec = shower.vals().at(s)->dEdx();
+            std::vector<double> dedxVec = shower.dEdx();
             // use black for too-low dE/dx
             int color = kBlack;
             if (plane < dedxVec.size()) {
@@ -1548,8 +1544,8 @@ namespace evd {
                       hits,
                       view,
                       plane,
-                      shower.vals().at(s)->ShowerStart(),
-                      shower.vals().at(s)->Direction(),
+                      shower.ShowerStart(),
+                      shower.Direction(),
                       s,
                       -10001); //use -10001 to increase shower hit size
 
@@ -1583,10 +1579,8 @@ namespace evd {
     for (size_t imod = 0; imod < recoOpt->fTrkVtxTrackLabels.size(); ++imod) {
       art::InputTag const which = recoOpt->fTrkVtxTrackLabels[imod];
 
-      art::View<recob::Track> trackCol;
-      GetTracks(evt, which, trackCol);
-
-      if (trackCol.vals().size() < 1) continue;
+      auto trackCol = GetTracks(evt, which);
+      if (!trackCol || trackCol->size() < 1) continue;
 
       // Recover associations output from the filter
       std::unique_ptr<art::Assns<recob::Vertex, recob::Track>> vertexTrackAssociations(
@@ -2511,14 +2505,12 @@ namespace evd {
     if (recoOpt->fDrawTracks > 2) {
       for (size_t imod = 0; imod < recoOpt->fTrackLabels.size(); ++imod) {
         art::InputTag which = recoOpt->fTrackLabels[imod];
-        art::View<recob::Track> trackView;
-        GetTracks(evt, which, trackView);
-        if (!trackView.isValid())
+        auto tracks = GetTracks(evt, which);
+        if (!tracks)
           continue; //Prevent potential segmentation fault if no tracks found. aoliv23@lsu.edu
 
-        art::PtrVector<recob::Track> trackVec;
-
-        trackView.fill(trackVec);
+        std::vector<art::Ptr<recob::Track>> trackVec;
+        art::fill_ptr_vector(trackVec, tracks);
 
         art::InputTag const cosmicTagLabel(
           recoOpt->fCosmicTagLabels.size() > imod ? recoOpt->fCosmicTagLabels[imod] : "");
@@ -2558,13 +2550,12 @@ namespace evd {
     if (recoOpt->fDrawShowers != 0) {
       for (size_t imod = 0; imod < recoOpt->fShowerLabels.size(); ++imod) {
         art::InputTag which = recoOpt->fShowerLabels[imod];
-        art::View<recob::Shower> shower;
-        GetShowers(evt, which, shower);
+        auto showers = GetShowers(evt, which);
+        if (!showers) { continue; }
 
-        for (size_t s = 0; s < shower.vals().size(); ++s) {
-          const recob::Shower* pshower = shower.vals().at(s);
-          int color = pshower->ID();
-          DrawShower3D(*pshower, color, view);
+        for (recob::Shower const& shower : *showers) {
+          int color = shower.ID();
+          DrawShower3D(shower, color, view);
         }
       }
     }
@@ -3392,16 +3383,15 @@ namespace evd {
     if (recoOpt->fDrawTracks != 0) {
       for (size_t imod = 0; imod < recoOpt->fTrackLabels.size(); ++imod) {
         art::InputTag which = recoOpt->fTrackLabels[imod];
-        art::View<recob::Track> track;
-        GetTracks(evt, which, track);
+        auto tracks = GetTracks(evt, which);
+        if (!tracks) { continue; }
 
-        for (size_t t = 0; t < track.vals().size(); ++t) {
-          const recob::Track* ptrack = track.vals().at(t);
-          int color = ptrack->ID() & 65535;
+        for (recob::Track const& track : *tracks) {
+          int color = track.ID() & 65535;
 
           // Draw track using only embedded information.
 
-          DrawTrackOrtho(*ptrack, color, proj, msize, view);
+          DrawTrackOrtho(track, color, proj, msize, view);
         }
       }
     }
@@ -3411,13 +3401,12 @@ namespace evd {
     if (recoOpt->fDrawShowers != 0) {
       for (size_t imod = 0; imod < recoOpt->fShowerLabels.size(); ++imod) {
         art::InputTag which = recoOpt->fShowerLabels[imod];
-        art::View<recob::Shower> shower;
-        GetShowers(evt, which, shower);
+        auto showers = GetShowers(evt, which);
+        if (!showers) { continue; }
 
-        for (size_t s = 0; s < shower.vals().size(); ++s) {
-          const recob::Shower* pshower = shower.vals().at(s);
-          int color = pshower->ID();
-          DrawShowerOrtho(*pshower, color, proj, msize, view);
+        for (recob::Shower const& shower : *showers) {
+          int color = shower.ID();
+          DrawShowerOrtho(shower, color, proj, msize, view);
         }
       }
     }
@@ -3695,26 +3684,27 @@ namespace evd {
 
     hits.clear();
 
-    std::vector<const recob::Hit*> temp;
-
+    auto hitsH = evt.getHandle<std::vector<recob::Hit>>(which);
     try {
-      evt.getView(which, temp);
-      for (const auto& hit : temp) {
-        // Note that the WireID in the hit object is useless for those detectors where a channel can correspond to
-        // more than one plane/wire. So our plan is to recover the list of wire IDs from the channel number and
-        // loop over those (if there are any)
-        const std::vector<geo::WireID>& wireIDs = wireReadoutGeom.ChannelToWire(hit->Channel());
-
-        // Loop to find match
-        for (const auto& wireID : wireIDs) {
-          if (wireID.Plane == plane && wireID.TPC == rawOpt->fTPC &&
-              wireID.Cryostat == rawOpt->fCryostat)
-            hits.push_back(hit);
-        }
-      }
+      *hitsH;
     }
     catch (cet::exception& e) {
       writeErrMsg("GetHits", e);
+      return 0;
+    }
+
+    for (const auto& hit : *hitsH) {
+      // Note that the WireID in the hit object is useless for those detectors where a channel can correspond to
+      // more than one plane/wire. So our plan is to recover the list of wire IDs from the channel number and
+      // loop over those (if there are any)
+      const std::vector<geo::WireID>& wireIDs = wireReadoutGeom.ChannelToWire(hit.Channel());
+
+      // Loop to find match
+      for (const auto& wireID : wireIDs) {
+        if (wireID.Plane == plane && wireID.TPC == rawOpt->fTPC &&
+            wireID.Cryostat == rawOpt->fCryostat)
+          hits.push_back(&hit);
+      }
     }
 
     return hits.size();
@@ -3904,33 +3894,31 @@ namespace evd {
   }
 
   //......................................................................
-  int RecoBaseDrawer::GetTracks(const art::Event& evt,
-                                const art::InputTag& which,
-                                art::View<recob::Track>& track)
+  art::Handle<std::vector<recob::Track>> RecoBaseDrawer::GetTracks(const art::Event& evt,
+                                                                   const art::InputTag& which)
   {
+    auto result = evt.getHandle<std::vector<recob::Track>>(which);
     try {
-      evt.getView(which, track);
+      *result;
     }
     catch (cet::exception& e) {
       writeErrMsg("GetTracks", e);
     }
-
-    return track.vals().size();
+    return result;
   }
 
   //......................................................................
-  int RecoBaseDrawer::GetShowers(const art::Event& evt,
-                                 const art::InputTag& which,
-                                 art::View<recob::Shower>& shower)
+  art::Handle<std::vector<recob::Shower>> RecoBaseDrawer::GetShowers(const art::Event& evt,
+                                                                     const art::InputTag& which)
   {
+    auto result = evt.getHandle<std::vector<recob::Shower>>(which);
     try {
-      evt.getView(which, shower);
+      *result;
     }
     catch (cet::exception& e) {
       writeErrMsg("GetShowers", e);
     }
-
-    return shower.vals().size();
+    return result;
   }
 
   //......................................................................
@@ -3990,14 +3978,12 @@ namespace evd {
                                 unsigned int tpc,
                                 unsigned int plane)
   {
-    std::vector<const recob::Hit*> temp;
     int NumberOfHitsBeforeThisPlane = 0;
-    evt.getView(
-      which,
-      temp); //temp.size() = total number of hits for this event (number of all hits in all Cryostats, TPC's, planes and wires)
-    for (size_t t = 0; t < temp.size(); ++t) {
-      if (temp[t]->WireID().Cryostat == cryostat && temp[t]->WireID().TPC == tpc &&
-          temp[t]->WireID().Plane == plane)
+    auto const& hits = evt.getProduct<std::vector<recob::Hit>>(which);
+    //hits.size() = total number of hits for this event (number of all hits in all Cryostats, TPC's, planes and wires)
+    for (recob::Hit const& hit : hits) {
+      if (hit.WireID().Cryostat == cryostat && hit.WireID().TPC == tpc &&
+          hit.WireID().Plane == plane)
         break;
       NumberOfHitsBeforeThisPlane++;
     }
