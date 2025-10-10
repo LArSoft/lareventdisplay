@@ -31,7 +31,6 @@ find_package(lardataobj REQUIRED EXPORT)
 find_package(larcorealg REQUIRED EXPORT)
 find_package(larcoreobj REQUIRED EXPORT)
 
-find_package(art_root_io REQUIRED EXPORT)
 find_package(canvas_root_io REQUIRED EXPORT)
 find_package(art REQUIRED EXPORT)
 find_package(canvas REQUIRED EXPORT)
@@ -45,7 +44,6 @@ find_package(nusimdata REQUIRED EXPORT)
 
 find_package(Eigen3 3.3 REQUIRED)
 find_package(ROOT COMPONENTS Core EG Geom Gpad Gui Hist MathCore REQUIRED EXPORT)
-find_package(ZLIB REQUIRED EXPORT)
 
 # macros for dictionary and simple_plugin
 include(CetMake)
