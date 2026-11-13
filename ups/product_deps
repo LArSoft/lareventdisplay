@@ -87,7 +87,7 @@
 #>  define_pythonpath
 ####################################
 parent		lareventdisplay
-defaultqual	e26
+defaultqual	e28
 ####################################
 
 ####################################
@@ -247,8 +247,8 @@ fcldir	product_dir	job
 #
 ####################################
 product		version		qual	flags		<table_format=2>
-larreco		v10_08_01	-
-nuevdb		v1_09_15	-
+larreco		v11_00_00	-
+nuevdb		v1_10_00	-
 cetmodules	v3_27_04	-	only_for_build
 end_product_list
 ####################################
@@ -305,10 +305,6 @@ end_product_list
 #
 ####################################
 qualifier	larreco		nuevdb
-c14:debug	c14:debug	c14:debug
-c14:prof	c14:prof	c14:prof
-e26:debug	e26:debug	e26:debug
-e26:prof	e26:prof	e26:prof
 e28:debug	e28:debug	e28:debug
 e28:prof	e28:prof	e28:prof
 end_qualifier_list
